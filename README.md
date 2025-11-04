@@ -639,12 +639,16 @@ The separation between `fack-macro` (proc-macro interface) and `fack-codegen` (p
 ## Generated Code Guarantees
 
 All implementations include:
-- `#[automatically_derived]` attribute for tool recognition
+- `#[automatically_derived]` attribute for tool recognition and linter warning supression
 - Proper destructuring of fields in pattern matches
 - Correct forwarding of lifetimes and generic parameters
 - No unsafe code
-- No heap allocations in generated methods
+- No heap allocations in generated methods (all `no_std`-compatible!)
 
 ## License
 
-See workspace license.
+Copyright (C) 2025 W. Frakchi
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+See [the full license agreement](LICENSE.md) for further information.
