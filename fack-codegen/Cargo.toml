@@ -1,6 +1,6 @@
 [package]
 name = "fack-codegen"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["wafkse"]
 description = "Standalone code generation engine for fack error handling"

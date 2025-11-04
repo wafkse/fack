@@ -1,6 +1,6 @@
 [package]
 name = "fack"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["wafkse"]
 description = "Declarative error handling library with no_std support and composable code generation"
@@ -13,5 +13,5 @@ categories = ["development-tools::procedural-macro-helpers", "no-std", "rust-pat
 readme = "../README.md"
 
 [dependencies]
-fack-core = { version = "0.1.0", path = "../fack-core" }
-fack-macro = { version = "0.1.0", path = "../fack-macro" }
+fack-core = { version = "0.1.1", path = "../fack-core" }
+fack-macro = { version = "0.1.1", path = "../fack-macro" }
