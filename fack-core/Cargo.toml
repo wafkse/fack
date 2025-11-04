@@ -2,5 +2,14 @@
 name = "fack-core"
 version = "0.1.0"
 edition = "2024"
+authors = ["wafkse"]
+description = "Core trait definitions for fack error handling library"
+license = "GPL-3.0"
+repository = "https://github.com/wafkse/fack"
+homepage = "https://github.com/wafkse/fack"
+documentation = "https://docs.rs/fack-core"
+keywords = ["error", "no-std", "core"]
+categories = ["no-std", "rust-patterns"]
+readme = "../README.md"
 
 [dependencies]

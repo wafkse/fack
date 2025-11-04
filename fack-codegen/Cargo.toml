@@ -2,6 +2,15 @@
 name = "fack-codegen"
 version = "0.1.0"
 edition = "2024"
+authors = ["wafkse"]
+description = "Standalone code generation engine for fack error handling"
+license = "GPL-3.0"
+repository = "https://github.com/wafkse/fack"
+homepage = "https://github.com/wafkse/fack"
+documentation = "https://docs.rs/fack-codegen"
+keywords = ["error", "codegen", "no-std", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers", "no-std"]
+readme = "../README.md"
 
 [dependencies]
 proc-macro2 = { version = "1.0" }

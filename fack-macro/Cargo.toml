@@ -2,10 +2,19 @@
 name = "fack-macro"
 version = "0.1.0"
 edition = "2024"
+authors = ["wafkse"]
+description = "Procedural macro implementation for fack error handling"
+license = "GPL-3.0"
+repository = "https://github.com/wafkse/fack"
+homepage = "https://github.com/wafkse/fack"
+documentation = "https://docs.rs/fack-macro"
+keywords = ["error", "derive", "macro", "no-std"]
+categories = ["development-tools::procedural-macro-helpers", "no-std"]
+readme = "../README.md"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-fack-codegen = { version = "*", path = "../fack-codegen" }
+fack-codegen = { version = "0.1.0", path = "../fack-codegen" }
 syn = { version = "2.0", default-features = false, features = ["parsing", "proc-macro", "printing", "derive", "extra-traits", "clone-impls"] }
