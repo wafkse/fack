@@ -1,0 +1,9 @@
+[package]
+name = "fack"
+version = "0.1.0"
+edition = "2024"
+description = "When error description meets simplicity"
+
+[dependencies]
+fack-core = { version = "0.1.0", path = "../fack-core" }
+fack-macro = { version = "0.1.0", path = "../fack-macro" }
