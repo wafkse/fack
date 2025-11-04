@@ -1,0 +1,11 @@
+[package]
+name = "fack-macro"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+fack-codegen = { version = "*", path = "../fack-codegen" }
+syn = { version = "2.0", default-features = false, features = ["parsing", "proc-macro", "printing", "derive", "extra-traits", "clone-impls"] }
