@@ -18,7 +18,7 @@ struct FileError {
 
 ```toml
 [dependencies]
-fack = "0.1.0"
+fack = "0.1.2"
 ```
 
 ## What's different from thiserror?
