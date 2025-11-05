@@ -2,25 +2,17 @@
 
 [![CI](https://github.com/wafkse/fack/actions/workflows/ci.yml/badge.svg?branch=trunk)](https://github.com/wafkse/fack/actions/workflows/ci.yml)
 
-Declarative error handling for Rust with `no_std` support and zero-allocation runtime.
+Error handling derive macro for Rust. `no_std` compatible, doesn't allocate.
 
 ```rust,no_run
 use fack::prelude::*;
 
 #[derive(Error, Debug)]
-#[error("configuration error: {message}")]
-struct ConfigError {
-    message: String,
+#[error("file not found: {path}")]
+struct FileError {
+    path: String,
 }
 ```
-
-## Features
-
-- **no_std compatible**: Uses `::core` by default, optional `::std` support
-- **Zero allocation**: No heap allocations in generated error implementations
-- **Declarative attributes**: Configure errors through `#[error(...)]` attributes
-- **Composable codegen**: Standalone `fack-codegen` library for custom tooling
-- **Span preservation**: Accurate IDE hints and LSP integration
 
 ## Installation
 
@@ -29,61 +21,178 @@ struct ConfigError {
 fack = "0.1.0"
 ```
 
-## Quick Start
+## What's different from thiserror?
+
+- Actually runs in `no_std` environments - uses `::core` by default, zero heap allocations at runtime
+- Control inlining with `#[error(inline(...))]` - matters for hot paths and code size
+- `fack-codegen` is a standalone library - use it in your own macros or build scripts
+- Preserves source spans properly for better IDE integration
+
+If you're writing embedded code or care about allocation-free error handling, this might be useful.
+
+## Examples
+
+Basic struct:
 
 ```rust,no_run
 use fack::prelude::*;
 
-// Simple error with display message
 #[derive(Error, Debug)]
-#[error("file not found: {path}")]
-struct FileError {
-    path: String,
+#[error("database error: {msg}")]
+struct DbError {
+    msg: String,
 }
+```
 
-// Error with source
+Error chaining:
+
+```rust,no_run
+use fack::prelude::*;
+
 #[derive(Error, Debug)]
-#[error("network request failed")]
-#[error(source(inner))]
-struct NetworkError {
-    inner: std::io::Error,
+#[error("request failed")]
+#[error(source(io))]
+struct RequestError {
+    io: std::io::Error,
     url: String,
 }
+```
 
-// Enum with multiple variants
+Enums with variants:
+
+```rust,no_run
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+enum ParseError {
+    #[error("invalid syntax at line {line}")]
+    Syntax { line: usize },
+
+    #[error("unexpected end of file")]
+    Eof,
+
+    #[error(transparent(0))]
+    Io(std::io::Error),
+}
+```
+
+Auto-conversion with `from`:
+
+```rust,no_run
+use fack::prelude::*;
+
 #[derive(Error, Debug)]
 enum AppError {
     #[error("io error")]
     #[error(from)]
     Io(std::io::Error),
 
-    #[error("parse failed: {msg}")]
-    Parse { msg: String },
+    #[error("parse error")]
+    #[error(from)]
+    Parse(std::num::ParseIntError),
+}
+
+// Now you can use ? with these error types
+fn example() -> Result<(), AppError> {
+    let _file = std::fs::read("file.txt")?;  // converts io::Error
+    let _num: i32 = "123".parse()?;          // converts ParseIntError
+    Ok(())
 }
 ```
 
-## Attribute Reference
+## Attributes
 
-- **`#[error("format {field}")]`**: Display implementation - named fields use `{field}`, tuple fields use `{_0}`
-- **`#[error(source(field))]`**: Designate error source for chaining
-- **`#[error(transparent(field))]`**: Forward Display and source to inner field
-- **`#[error(from)]`**: Generate `From` implementation for automatic conversion
-- **`#[error(inline(strategy))]`**: Control inlining (`neutral`, `always`, `never`)
-- **`#[error(import(path))]`**: Override default `::core` import root
+**Format strings** - `#[error("message")]`
 
-See [documentation](https://docs.rs/fack) for detailed usage and examples.
+Use `{field}` for named fields, `{_0}` for tuple fields. Standard format specifiers work.
 
-## Architecture
+```rust,no_run
+#[derive(Error, Debug)]
+#[error("value {value} out of range {min}..{max}")]
+struct RangeError { value: i32, min: i32, max: i32 }
 
-- **fack**: Main crate with derive macro
-- **fack-core**: Core trait definitions
-- **fack-macro**: Procedural macro implementation
-- **fack-codegen**: Standalone code generation engine
+#[derive(Error, Debug)]
+#[error("invalid input: {_0:?}")]
+struct InputError(String);
+```
+
+**Source** - `#[error(source(field))]`
+
+Mark which field contains the underlying error. Enables error chain traversal.
+
+```rust,no_run
+#[derive(Error, Debug)]
+#[error("operation failed")]
+#[error(source(cause))]
+struct OpError {
+    cause: std::io::Error,
+}
+```
+
+**Transparent** - `#[error(transparent(field))]`
+
+Forward display and source to an inner error. Useful for wrapper types.
+
+```rust,no_run
+#[derive(Error, Debug)]
+#[error(transparent(0))]
+struct Wrapper(std::io::Error);
+```
+
+**From** - `#[error(from)]`
+
+Generate `From<T>` impl for the error type. Requires exactly one field.
+
+```rust,no_run
+#[derive(Error, Debug)]
+#[error("wrapped io error")]
+#[error(from)]
+struct IoWrapper(std::io::Error);
+```
+
+**Inline** - `#[error(inline(strategy))]`
+
+Control inlining of generated methods. Options: `neutral` (default), `always`, `never`.
+
+```rust,no_run
+#[derive(Error, Debug)]
+#[error(inline(always))]  // force inline for hot paths
+#[error("fast error")]
+struct HotPathError { code: u32 }
+```
+
+**Import** - `#[error(import(path))]`
+
+Override the default `::core` import. Use `::std` if you need std-specific features.
+
+```rust,no_run
+#[derive(Error, Debug)]
+#[error(import(::std))]
+#[error("std error")]
+struct StdError { msg: String }
+```
+
+## Documentation
+
+Full docs at [docs.rs/fack](https://docs.rs/fack).
+
+## Workspace structure
+
+This repo has four crates:
+
+- `fack` - Main crate, re-exports everything
+- `fack-core` - Error trait definition
+- `fack-macro` - Procedural macro implementation
+- `fack-codegen` - Code generation engine
+
+The `fack-codegen` crate is deliberately not a proc-macro crate. You can depend on it in regular code to build custom error macros or generate errors at build time.
 
 ## License
+
+GPL-3.0
 
 Copyright (C) 2025 W. Frakchi
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-See [the full license agreement](LICENSE.md) for further information.
+See [LICENSE.md](LICENSE.md) for the full text.
