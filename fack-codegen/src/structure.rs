@@ -30,6 +30,7 @@ pub struct Structure {
 
 /// The options for this structure in terms of its behavior.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[allow(clippy::large_enum_variant)]
 pub enum StructureOptions {
     /// The structure is a new, standalone error type.
     Standalone {
@@ -125,7 +126,7 @@ impl FieldList {
 
                 let ty = field.ty.clone();
 
-                Ok((name.map(FieldRef::Named).unwrap_or(FieldRef::Indexed(DEFAULT_FIELD)), ty))
+                Ok((name.map_or(FieldRef::Indexed(DEFAULT_FIELD), FieldRef::Named), ty))
             }
             syn::Fields::Unnamed(FieldsUnnamed { unnamed, .. }) => {
                 if unnamed.len() != 1 {
@@ -149,16 +150,16 @@ impl FieldList {
                 let pattern = named.iter().map(|field| {
                     let name = &field.name;
 
-                    quote::quote! { #name }
+                    quote::quote! { ref #name }
                 });
 
                 Ok(quote::quote! { { #(#pattern),* } })
             }
             FieldList::Unnamed(unnamed) => {
                 let pattern = unnamed.iter().enumerate().map(|(index, _)| {
-                    let ident = Ident::new(&format!("_{}", index), proc_macro2::Span::call_site());
+                    let ident = Ident::new(&format!("_{index}"), proc_macro2::Span::call_site());
 
-                    quote::quote! { #ident }
+                    quote::quote! { ref #ident }
                 });
 
                 Ok(quote::quote! { ( #(#pattern),* ) })

@@ -3,7 +3,7 @@
 //! This is not a `proc-macro` crate, therefore, this can be freely depended
 //! upon in both normal and procedural macro contexts.
 #![no_std]
-#![forbid(unsafe_code, missing_docs, rustdoc::all, clippy::all, clippy::pedantic)]
+#![forbid(unsafe_code, missing_docs, rustdoc::all)]
 
 extern crate alloc;
 
@@ -56,7 +56,7 @@ impl ErrorList {
     ///
     /// Returns [`Err`] if this error list is not empty, [`Ok`] otherwise.
     #[inline]
-    pub fn compose<T>(self: Self, value: T) -> syn::Result<T> {
+    pub fn compose<T>(self, value: T) -> syn::Result<T> {
         match self {
             Self(Some(target_error)) => Err(target_error),
             Self(None) => Ok(value),
@@ -68,6 +68,7 @@ impl ErrorList {
 ///
 /// Is either an enumeration or a structure.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[allow(clippy::large_enum_variant)]
 pub enum Target {
     /// An error type that is an enumeration.
     Enum(enumerate::Enumeration),
@@ -104,7 +105,7 @@ impl Target {
             /// Construct a new, empty parameter bucket, but with an associated
             /// span.
             #[inline]
-            pub fn spanned<S>(span_subject: S) -> Self
+            pub fn spanned<S>(span_subject: &S) -> Self
             where
                 S: Spanned,
             {
@@ -252,7 +253,7 @@ impl Target {
 
                         StructureOptions::Standalone { source_field, format_args }
                     }
-                    (Some(_), Some(_)) => {
+                    (Some(_), Some(())) => {
                         return Err(syn::Error::new_spanned(
                             name_ident,
                             "structure can't be both transparent and from-forwarded",
@@ -319,7 +320,7 @@ impl Target {
                     let variant_name = ident.clone();
 
                     let variant = match (transparent, from) {
-                        (Some(_), Some(_)) => {
+                        (Some(_), Some(())) => {
                             error_list.append(syn::Error::new_spanned(
                                 ident,
                                 "variant can't be both transparent and from-forwarded",

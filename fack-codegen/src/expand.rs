@@ -4,15 +4,15 @@ use alloc::{format, vec::Vec};
 
 use proc_macro2::TokenStream;
 
-use quote::{ToTokens, quote};
+use quote::{quote, ToTokens};
 
 use syn::Ident;
 
 use super::{
-    Target,
     common::{FieldRef, Format, ImportRoot, InlineOptions, Transparent},
     enumerate::{Enumeration, Variant},
     structure::{Structure, StructureOptions},
+    Target,
 };
 
 /// A struct that encapsulates the code generation for error definitions.
@@ -48,9 +48,7 @@ impl Expand {
             None => quote! {},
         };
 
-        let root_expand = root_import
-            .map(|ImportRoot(root)| root.to_token_stream())
-            .unwrap_or_else(|| quote! { ::core });
+        let root_expand = root_import.map_or_else(|| quote! { ::core }, |ImportRoot(root)| root.to_token_stream());
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
@@ -61,11 +59,7 @@ impl Expand {
                 source_field,
                 format_args: Format { format, format_args },
             } => {
-                let source_expand = match source_field {
-                    Some(FieldRef::Named(ref field)) => quote! { Some(self.#field) },
-                    Some(FieldRef::Indexed(ref field)) => quote! { Some(self.#field) },
-                    None => quote! { None },
-                };
+                let source_expand = if let Some(field) = source_field { quote! { Some(&self.#field) } } else { quote! { None } };
 
                 Ok(quote! {
                     #[automatically_derived]
@@ -80,7 +74,7 @@ impl Expand {
                     impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
                         #inline_expand
                         fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                            let Self #field_pat = self;
+                            let &Self #field_pat = self;
 
                             #root_expand::write!(f, #format, #format_args)
                         }
@@ -88,9 +82,8 @@ impl Expand {
                 })
             }
             StructureOptions::Transparent(Transparent(target_field)) => {
-                let field_expand = match target_field {
-                    FieldRef::Named(ref field) => quote! { self.#field },
-                    FieldRef::Indexed(ref field) => quote! { self.#field },
+                let field_expand = quote! {
+                    self.#target_field
                 };
 
                 Ok(quote! {
@@ -98,8 +91,7 @@ impl Expand {
                     impl #impl_generics #root_expand::error::Error for #name_ident #ty_generics #where_clause {
                         #inline_expand
                         fn source(&self) -> Option<&(dyn #root_expand::error::Error + 'static)> {
-
-                            #root_expand::error::Error::source(#field_expand)
+                            #root_expand::error::Error::source(&#field_expand)
                         }
                     }
 
@@ -107,9 +99,9 @@ impl Expand {
                     impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
                         #inline_expand
                         fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                            let Self #field_pat = self;
+                            let &Self #field_pat = self;
 
-                            #root_expand::fmt::Display::fmt(#field_expand, f)
+                            #root_expand::fmt::Display::fmt(&#field_expand, f)
                         }
                     }
                 })
@@ -120,16 +112,12 @@ impl Expand {
                 source_field,
                 format_args: Format { format, format_args },
             } => {
-                let source_expand = match source_field {
-                    Some(FieldRef::Named(ref field)) => quote! { Some(self.#field) },
-                    Some(FieldRef::Indexed(ref field)) => quote! { Some(self.#field) },
-                    None => quote! { None },
-                };
+                let source_expand = if let Some(field) = source_field { quote! { Some(&self.#field) } } else { quote! { None } };
 
                 let from_expand = match field_ref {
                     FieldRef::Named(ref field) => quote! {
                         #[automatically_derived]
-                        impl #impl_generics From<#field_type> #name_ident #ty_generics #where_clause {
+                        impl #impl_generics From<#field_type> for #name_ident #ty_generics #where_clause {
                             #inline_expand
                             fn from(#field: #field_type) -> Self {
                                Self { #field }
@@ -138,7 +126,7 @@ impl Expand {
                     },
                     FieldRef::Indexed(..) => quote! {
                         #[automatically_derived]
-                        impl #impl_generics From<#field_type> #name_ident #ty_generics #where_clause {
+                        impl #impl_generics From<#field_type> for #name_ident #ty_generics #where_clause {
                             #inline_expand
                             fn from(field: #field_type) -> Self {
                                 Self(field)
@@ -162,7 +150,7 @@ impl Expand {
                     impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
                         #inline_expand
                         fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                            let Self #field_pat = self;
+                            let &Self #field_pat = self;
 
                             #root_expand::write!(f, #format, #format_args)
                         }
@@ -189,9 +177,7 @@ impl Expand {
             None => quote! {},
         };
 
-        let root_expand = root_import
-            .map(|ImportRoot(root)| root.to_token_stream())
-            .unwrap_or_else(|| quote! { ::core });
+        let root_expand = root_import.map_or_else(|| quote! { ::core }, |ImportRoot(root)| root.to_token_stream());
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
@@ -213,21 +199,21 @@ impl Expand {
 
                     if let Some(source_field) = source_field {
                         let field_expand = match source_field {
-                            FieldRef::Named(ref field) => quote! { Some(self.#field) },
+                            FieldRef::Named(ref field) => quote! { self.#field },
                             FieldRef::Indexed(index) => Ident::new(&format!("_{index}"), variant_name.span()).into_token_stream(),
                         };
 
                         source_expand.push(quote! {
-                            Self::#variant_name #field_pat => #field_expand,
+                            &Self::#variant_name #field_pat => Some(#field_expand),
                         });
                     } else {
                         source_expand.push(quote! {
-                            Self::#variant_name #field_pat => None,
+                            &Self::#variant_name #field_pat => None,
                         });
                     }
 
                     display_expand.push(quote! {
-                        Self::#variant_name #field_pat  => #root_expand::write!(f, #format, #format_args),
+                        &Self::#variant_name #field_pat  => #root_expand::write!(f, #format, #format_args),
                     });
                 }
                 Variant::Unit {
@@ -235,11 +221,11 @@ impl Expand {
                     variant_name,
                 } => {
                     source_expand.push(quote! {
-                        Self::#variant_name => None,
+                        &Self::#variant_name => None,
                     });
 
                     display_expand.push(quote! {
-                        Self::#variant_name => #root_expand::write!(f, #format, #format_args),
+                        &Self::#variant_name => #root_expand::write!(f, #format, #format_args),
                     });
                 }
                 Variant::Transparent {
@@ -255,11 +241,11 @@ impl Expand {
                     let field_pat = field_list.pattern()?;
 
                     source_expand.push(quote! {
-                        Self::#variant_name #field_pat => #root_expand::error::Error::source(#trans_expand),
+                        &Self::#variant_name #field_pat => #root_expand::error::Error::source(#trans_expand),
                     });
 
                     display_expand.push(quote! {
-                        Self::#variant_name #field_pat => #root_expand::fmt::Display::fmt(#trans_expand, f),
+                        &Self::#variant_name #field_pat => #root_expand::fmt::Display::fmt(#trans_expand, f),
                     });
                 }
                 Variant::Forward {
@@ -268,13 +254,10 @@ impl Expand {
                     field_ref,
                     field_type,
                 } => {
-                    let bare_field_name = match field_ref {
-                        FieldRef::Named(ref field) => quote! { #field },
-                        FieldRef::Indexed(ref field) => quote! { #field },
-                    };
+                    let bare_field_name = quote!(#field_ref);
 
                     source_expand.push(quote! {
-                        Self::#variant_name { #bare_field_name: target_field }  => #root_expand::error::Error::source(target_field),
+                        &Self::#variant_name { #bare_field_name: ref target_field }  => #root_expand::error::Error::source(target_field),
                     });
 
                     from_expand.push(match field_ref {
@@ -301,16 +284,16 @@ impl Expand {
                     let replaced_field_name = match field_ref {
                         FieldRef::Named(..) => None,
                         FieldRef::Indexed(ref field) => Some({
-                            let ident = Ident::new(&format!("_{}", field), variant_name.span());
+                            let ident = Ident::new(&format!("_{field}"), variant_name.span());
 
                             quote! {
-                                : #ident
+                                : ref #ident
                             }
                         }),
                     };
 
                     display_expand.push(quote! {
-                        Self::#variant_name { #bare_field_name #replaced_field_name }  => #root_expand::write!(f, #format, #format_args),
+                        &Self::#variant_name { #bare_field_name #replaced_field_name }  => #root_expand::write!(f, #format, #format_args),
                     });
                 }
             }

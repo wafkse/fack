@@ -1,0 +1,127 @@
+name: CI
+
+on:
+    push:
+        branches: [development]
+    pull_request:
+        branches: [development]
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    test:
+        name: Test
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                os: [ubuntu-latest, windows-latest, macos-latest]
+                rust: [stable, nightly]
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@master
+              with:
+                  toolchain: ${{ matrix.rust }}
+
+            - name: Cache cargo registry
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cargo/registry
+                  key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+            - name: Cache cargo index
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cargo/git
+                  key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+            - name: Cache cargo build
+              uses: actions/cache@v4
+              with:
+                  path: target
+                  key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+            - name: Build
+              run: cargo build --workspace --verbose
+
+            - name: Run tests
+              run: cargo test --workspace --verbose
+
+            - name: Run doc tests
+              run: cargo test --doc --workspace --verbose
+
+    clippy:
+        name: Clippy
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy
+
+            - name: Run clippy
+              run: cargo clippy --workspace --all-targets -- -D warnings
+
+    fmt:
+        name: Format
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt
+
+            - name: Check formatting
+              run: cargo fmt --all -- --check
+
+    no-std:
+        name: no_std compatibility
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: thumbv7em-none-eabihf
+
+            - name: Build fack-core for no_std
+              run: cargo build -p fack-core --target thumbv7em-none-eabihf --verbose
+
+            - name: Build fack-codegen for no_std
+              run: cargo build -p fack-codegen --target thumbv7em-none-eabihf --verbose
+
+    docs:
+        name: Documentation
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Build documentation
+              run: cargo doc --workspace --no-deps --verbose
+              env:
+                  RUSTDOCFLAGS: -D warnings
+
+    minimal-versions:
+        name: Minimal Versions
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@nightly
+
+            - name: Install cargo-minimal-versions
+              run: cargo install cargo-minimal-versions
+
+            - name: Check minimal versions
+              run: cargo minimal-versions check --workspace

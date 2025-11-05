@@ -40,9 +40,10 @@ use fack_codegen::{Target, expand::Expand};
 /// Rust formatting syntax. Additional expressions may be listed as
 /// comma-separated arguments.
 ///
-/// ```
+/// ```rust
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
-/// #[error("failed to read file: {path}", path)]
+/// #[error("failed to read file: {path}")]
 /// struct ReadError {
 ///     path: String,
 /// }
@@ -63,7 +64,8 @@ use fack_codegen::{Target, expand::Expand};
 /// Declares which field represents the underlying cause of the error.
 /// This field will be returned from `Error::source`.
 ///
-/// ```
+/// ```rust
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
 /// #[error("network request failed")]
 /// #[error(source(io))]
@@ -73,7 +75,6 @@ use fack_codegen::{Target, expand::Expand};
 /// ```
 ///
 /// Produces:
-///
 /// ```ignore
 /// impl std::error::Error for NetworkError {
 ///     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
@@ -86,10 +87,10 @@ use fack_codegen::{Target, expand::Expand};
 ///
 /// Makes the error type a transparent wrapper around one of its fields.
 /// Both [`Display`] and [`Error`] are forwarded directly to that field.
-///
-/// ```
+/// ```rust
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
-/// #[error(transparent)]
+/// #[error(transparent(0))]
 /// struct Wrapper(std::io::Error);
 /// ```
 ///
@@ -101,8 +102,8 @@ use fack_codegen::{Target, expand::Expand};
 ///
 /// Requests that a `From<T>` implementation be generated for a specified
 /// field type, allowing automatic conversion into the error type.
-///
-/// ```
+/// ```rust
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
 /// #[error("parse failed")]
 /// #[error(from)]
@@ -112,7 +113,6 @@ use fack_codegen::{Target, expand::Expand};
 /// ```
 ///
 /// Allows:
-///
 /// ```ignore
 /// let err: ParseError = "abc".parse::<u32>().unwrap_err().into();
 /// ```
@@ -122,8 +122,8 @@ use fack_codegen::{Target, expand::Expand};
 ///
 /// Enums may use the same attribute kinds at the *variant* level.
 /// Each variant can provide its own formatting, source, or transparency.
-///
 /// ```
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
 /// enum MyError {
 ///     #[error("invalid input: {_0}")]
@@ -143,8 +143,8 @@ use fack_codegen::{Target, expand::Expand};
 /// # Inline options
 ///
 /// Inline behavior for generated methods can be controlled using:
-///
-/// ```
+/// ```rust
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
 /// #[error(inline(always))]
 /// #[error("{msg}")]
@@ -164,9 +164,10 @@ use fack_codegen::{Target, expand::Expand};
 /// # Root import
 ///
 /// All generated code defaults to using `::core`. This can be overridden:
-///
-/// ```
+/// ```rust
+/// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
+/// #[error("{msg}")]
 /// #[error(import(::std))]
 /// struct StdError {
 ///     msg: &'static str,
@@ -179,7 +180,7 @@ use fack_codegen::{Target, expand::Expand};
 /// [`Display`]: core::fmt::Display
 #[proc_macro_derive(Error, attributes(error))]
 pub fn error(input: TokenStream) -> TokenStream {
-    let ref input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let input = &syn::parse_macro_input!(input as syn::DeriveInput);
 
     match Target::input(input).map(Expand::target) {
         Ok(Ok(target_stream)) => TokenStream::from(target_stream),
