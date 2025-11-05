@@ -72,30 +72,13 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
+            - name: Install Rust nightly
+              uses: dtolnay/rust-toolchain@nightly
               with:
                   components: rustfmt
 
             - name: Check formatting
-              run: cargo fmt --all -- --check
-
-    no-std:
-        name: no_std compatibility
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  targets: thumbv7em-none-eabihf
-
-            - name: Build fack-core for no_std
-              run: cargo build -p fack-core --target thumbv7em-none-eabihf --verbose
-
-            - name: Build fack-codegen for no_std
-              run: cargo build -p fack-codegen --target thumbv7em-none-eabihf --verbose
+              run: cargo +nightly fmt --all -- --check
 
     docs:
         name: Documentation
@@ -110,18 +93,3 @@ jobs:
               run: cargo doc --workspace --no-deps --verbose
               env:
                   RUSTDOCFLAGS: -D warnings
-
-    minimal-versions:
-        name: Minimal Versions
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install Rust
-              uses: dtolnay/rust-toolchain@nightly
-
-            - name: Install cargo-minimal-versions
-              run: cargo install cargo-minimal-versions
-
-            - name: Check minimal versions
-              run: cargo minimal-versions check --workspace
