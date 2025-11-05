@@ -1,6 +1,6 @@
 [package]
 name = "fack-core"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["wafkse"]
 description = "Core trait definitions for fack error handling library"
