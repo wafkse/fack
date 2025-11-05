@@ -6,8 +6,8 @@
 //!
 //! # Features
 //!
-//! - **`no_std` compatible**: Uses `::core` by default, optional `::std` support
-//!   via `#[error(import(::std))]`
+//! - **`no_std` compatible**: Uses `::core` by default, optional `::std`
+//!   support via `#[error(import(::std))]`
 //! - **Zero allocation**: No heap allocations in generated error
 //!   implementations
 //! - **Declarative attributes**: Configure all error behavior through

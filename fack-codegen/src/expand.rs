@@ -4,15 +4,15 @@ use alloc::{format, vec::Vec};
 
 use proc_macro2::TokenStream;
 
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 
 use syn::Ident;
 
 use super::{
+    Target,
     common::{FieldRef, Format, ImportRoot, InlineOptions, Transparent},
     enumerate::{Enumeration, Variant},
     structure::{Structure, StructureOptions},
-    Target,
 };
 
 /// A struct that encapsulates the code generation for error definitions.
@@ -59,7 +59,11 @@ impl Expand {
                 source_field,
                 format_args: Format { format, format_args },
             } => {
-                let source_expand = if let Some(field) = source_field { quote! { Some(&self.#field) } } else { quote! { None } };
+                let source_expand = if let Some(field) = source_field {
+                    quote! { Some(&self.#field) }
+                } else {
+                    quote! { None }
+                };
 
                 Ok(quote! {
                     #[automatically_derived]
@@ -112,7 +116,11 @@ impl Expand {
                 source_field,
                 format_args: Format { format, format_args },
             } => {
-                let source_expand = if let Some(field) = source_field { quote! { Some(&self.#field) } } else { quote! { None } };
+                let source_expand = if let Some(field) = source_field {
+                    quote! { Some(&self.#field) }
+                } else {
+                    quote! { None }
+                };
 
                 let from_expand = match field_ref {
                     FieldRef::Named(ref field) => quote! {

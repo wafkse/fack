@@ -6,10 +6,10 @@ use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 
 use syn::{
+    Expr, Ident, LitInt, LitStr, Path, Token,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     token::Paren,
-    Expr, Ident, LitInt, LitStr, Path, Token,
 };
 
 use super::ErrorList;
@@ -36,14 +36,14 @@ pub struct Param {
 impl Param {
     /// A new meta-parameter that has no specific name.
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn lone(kind: ParamKind) -> Self {
         Self { name: None, kind }
     }
 
     /// A new meta-parameter that has a specific name.
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn identified(name: Ident, kind: ParamKind) -> Self {
         Self { name: Some(name), kind }
     }
@@ -245,8 +245,6 @@ impl Parse for Format {
 
         let format_args = if input.peek(Token![,]) {
             let _ = input.parse::<Token![,]>()?;
-
-            
 
             Punctuated::<Expr, Token![,]>::parse_terminated(input)?
         } else {
