@@ -1,5 +1,7 @@
 # fack
 
+[![CI](https://github.com/wafkse/fack/actions/workflows/ci.yml/badge.svg?branch=trunk)](https://github.com/wafkse/fack/actions/workflows/ci.yml)
+
 Declarative error handling for Rust with `no_std` support and zero-allocation runtime.
 
 ```rust,no_run
@@ -54,7 +56,7 @@ enum AppError {
     #[error("io error")]
     #[error(from)]
     Io(std::io::Error),
-    
+
     #[error("parse failed: {msg}")]
     Parse { msg: String },
 }
