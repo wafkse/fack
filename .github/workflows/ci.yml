@@ -18,27 +18,27 @@ jobs:
                 os: [ubuntu-latest, windows-latest, macos-latest]
                 rust: [stable, nightly]
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Install Rust
-              uses: dtolnay/rust-toolchain@master
+              uses: dtolnay/rust-toolchain@v1
               with:
                   toolchain: ${{ matrix.rust }}
 
             - name: Cache cargo registry
-              uses: actions/cache@v4
+              uses: actions/cache@v6
               with:
                   path: ~/.cargo/registry
                   key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Cache cargo index
-              uses: actions/cache@v4
+              uses: actions/cache@v6
               with:
                   path: ~/.cargo/git
                   key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
 
             - name: Cache cargo build
-              uses: actions/cache@v4
+              uses: actions/cache@v6
               with:
                   path: target
                   key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
@@ -56,11 +56,12 @@ jobs:
         name: Clippy
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
+              uses: dtolnay/rust-toolchain@v1
               with:
+                  toolchain: stable
                   components: clippy
 
             - name: Run clippy
@@ -70,11 +71,12 @@ jobs:
         name: Format
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Install Rust nightly
-              uses: dtolnay/rust-toolchain@nightly
+              uses: dtolnay/rust-toolchain@v1
               with:
+                  toolchain: nightly
                   components: rustfmt
 
             - name: Check formatting
@@ -84,10 +86,12 @@ jobs:
         name: Documentation
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
             - name: Install Rust
-              uses: dtolnay/rust-toolchain@stable
+              uses: dtolnay/rust-toolchain@v1
+              with:
+                  toolchain: stable
 
             - name: Build documentation
               run: cargo doc --workspace --no-deps --verbose
