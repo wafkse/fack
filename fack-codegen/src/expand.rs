@@ -1,334 +1,164 @@
-//! Final code expansion for error definitions.
+//! Expansion of validated semantics into Rust trait implementations.
 
-use alloc::{format, vec::Vec};
+use alloc::vec::Vec;
 
+use crate::{
+    semantics::{Enumeration, Structure, Target},
+    syntax::{Import, Inline},
+};
 use proc_macro2::TokenStream;
-
 use quote::{ToTokens, quote};
 
-use syn::Ident;
+mod conversion;
+mod display;
+mod error;
 
-use super::{
-    Target,
-    common::{FieldRef, Format, ImportRoot, InlineOptions, Transparent},
-    enumerate::{Enumeration, Variant},
-    structure::{Structure, StructureOptions},
-};
+use conversion::ConversionImpl;
+use display::{DisplayImpl, EnumDisplayImpl};
+use error::{EnumErrorImpl, ErrorImpl};
 
-/// A struct that encapsulates the code generation for error definitions.
-pub struct Expand {}
+/// Expand one validated semantic node into Rust tokens.
+pub trait Expand {
+    /// Additional context required by this semantic node.
+    type Context;
 
-impl Expand {
-    /// Expand the [`Target`] into the appropriate error implementation.
+    /// Expand using explicit context.
+    ///
+    /// # Errors
+    ///
+    /// Returns a diagnostic if final token construction discovers an invalid
+    /// generated Rust fragment.
+    fn expand_with(self, context: Self::Context) -> syn::Result<TokenStream>;
+
+    /// Expand with a default context.
+    ///
+    /// # Errors
+    ///
+    /// Returns any diagnostic produced by [`Expand::expand_with`].
     #[inline]
-    pub fn target(target_value: Target) -> syn::Result<TokenStream> {
-        match target_value {
-            Target::Struct(structure) => Self::structure(structure),
-            Target::Enum(enumeration) => Self::enumeration(enumeration),
-        }
+    fn expand(self) -> syn::Result<TokenStream>
+    where
+        Self::Context: Default,
+        Self: Sized,
+    {
+        self.expand_with(Self::Context::default())
     }
 }
 
-impl Expand {
-    /// Expand to the error implementation for the target [`Structure`].
-    pub fn structure(target_value: Structure) -> syn::Result<TokenStream> {
-        let Structure {
-            inline_opts,
-            root_import,
-            name_ident,
-            generics,
-            options,
-            field_list,
-        } = target_value;
-
-        let inline_expand = match inline_opts {
-            Some(InlineOptions::Neutral) => quote! { #[inline] },
-            Some(InlineOptions::Always) => quote! { #[inline(always)] },
-            Some(InlineOptions::Never) => quote! { #[inline(never)] },
-            None => quote! {},
-        };
-
-        let root_expand = root_import.map_or_else(|| quote! { ::core }, |ImportRoot(root)| root.to_token_stream());
-
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-        let field_pat = field_list.pattern()?;
-
-        match options {
-            StructureOptions::Standalone {
-                source_field,
-                format_args: Format { format, format_args },
-            } => {
-                let source_expand = if let Some(field) = source_field {
-                    quote! { Some(&self.#field) }
-                } else {
-                    quote! { None }
-                };
-
-                Ok(quote! {
-                    #[automatically_derived]
-                    impl #impl_generics #root_expand::error::Error for #name_ident #ty_generics #where_clause {
-                        #inline_expand
-                        fn source(&self) -> Option<&(dyn #root_expand::error::Error + 'static)> {
-                            #source_expand
-                        }
-                    }
-
-                    #[automatically_derived]
-                    impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
-                        #inline_expand
-                        fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                            let &Self #field_pat = self;
-
-                            #root_expand::write!(f, #format, #format_args)
-                        }
-                    }
-                })
-            }
-            StructureOptions::Transparent(Transparent(target_field)) => {
-                let field_expand = quote! {
-                    self.#target_field
-                };
-
-                Ok(quote! {
-                    #[automatically_derived]
-                    impl #impl_generics #root_expand::error::Error for #name_ident #ty_generics #where_clause {
-                        #inline_expand
-                        fn source(&self) -> Option<&(dyn #root_expand::error::Error + 'static)> {
-                            #root_expand::error::Error::source(&#field_expand)
-                        }
-                    }
-
-                    #[automatically_derived]
-                    impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
-                        #inline_expand
-                        fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                            let &Self #field_pat = self;
-
-                            #root_expand::fmt::Display::fmt(&#field_expand, f)
-                        }
-                    }
-                })
-            }
-            StructureOptions::Forward {
-                field_ref,
-                field_type,
-                source_field,
-                format_args: Format { format, format_args },
-            } => {
-                let source_expand = if let Some(field) = source_field {
-                    quote! { Some(&self.#field) }
-                } else {
-                    quote! { None }
-                };
-
-                let from_expand = match field_ref {
-                    FieldRef::Named(ref field) => quote! {
-                        #[automatically_derived]
-                        impl #impl_generics From<#field_type> for #name_ident #ty_generics #where_clause {
-                            #inline_expand
-                            fn from(#field: #field_type) -> Self {
-                               Self { #field }
-                            }
-                        }
-                    },
-                    FieldRef::Indexed(..) => quote! {
-                        #[automatically_derived]
-                        impl #impl_generics From<#field_type> for #name_ident #ty_generics #where_clause {
-                            #inline_expand
-                            fn from(field: #field_type) -> Self {
-                                Self(field)
-                            }
-                        }
-                    },
-                };
-
-                Ok(quote! {
-                    #from_expand
-
-                    #[automatically_derived]
-                    impl #impl_generics #root_expand::error::Error for #name_ident #ty_generics #where_clause {
-                        #inline_expand
-                        fn source(&self) -> Option<&(dyn #root_expand::error::Error + 'static)> {
-                            #source_expand
-                        }
-                    }
-
-                    #[automatically_derived]
-                    impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
-                        #inline_expand
-                        fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                            let &Self #field_pat = self;
-
-                            #root_expand::write!(f, #format, #format_args)
-                        }
-                    }
-                })
-            }
-        }
+/// Expand one fully validated semantic target.
+pub fn target(target: Target) -> syn::Result<TokenStream> {
+    match target {
+        Target::Struct(structure) => StructureExpansion(*structure).expand(),
+        Target::Enum(enumeration) => EnumerationExpansion(enumeration).expand(),
     }
+}
 
-    /// Expand to the error implementation for the target [`Enumeration`].
-    pub fn enumeration(target_value: Enumeration) -> syn::Result<TokenStream> {
-        let Enumeration {
-            inline_opts,
-            root_import,
-            name_ident,
-            generics,
-            variant_list,
-        } = target_value;
+/// Expansion request for one validated structure.
+struct StructureExpansion(Structure);
 
-        let inline_expand = match inline_opts {
-            Some(InlineOptions::Neutral) => quote! { #[inline] },
-            Some(InlineOptions::Always) => quote! { #[inline(always)] },
-            Some(InlineOptions::Never) => quote! { #[inline(never)] },
-            None => quote! {},
-        };
+impl Expand for StructureExpansion {
+    /// Structure expansion is self-contained after validation.
+    type Context = ();
 
-        let root_expand = root_import.map_or_else(|| quote! { ::core }, |ImportRoot(root)| root.to_token_stream());
-
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-        let mut source_expand = Vec::new();
-
-        let mut from_expand = Vec::new();
-
-        let mut display_expand = Vec::new();
-
-        for variant in variant_list {
-            match variant {
-                Variant::Struct {
-                    format: Format { format, format_args },
-                    variant_name,
-                    field_list,
-                    source_field,
-                } => {
-                    let field_pat = field_list.pattern()?;
-
-                    if let Some(source_field) = source_field {
-                        let field_expand = match source_field {
-                            FieldRef::Named(ref field) => quote! { self.#field },
-                            FieldRef::Indexed(index) => Ident::new(&format!("_{index}"), variant_name.span()).into_token_stream(),
-                        };
-
-                        source_expand.push(quote! {
-                            &Self::#variant_name #field_pat => Some(#field_expand),
-                        });
-                    } else {
-                        source_expand.push(quote! {
-                            &Self::#variant_name #field_pat => None,
-                        });
-                    }
-
-                    display_expand.push(quote! {
-                        &Self::#variant_name #field_pat  => #root_expand::write!(f, #format, #format_args),
-                    });
-                }
-                Variant::Unit {
-                    format: Format { format, format_args },
-                    variant_name,
-                } => {
-                    source_expand.push(quote! {
-                        &Self::#variant_name => None,
-                    });
-
-                    display_expand.push(quote! {
-                        &Self::#variant_name => #root_expand::write!(f, #format, #format_args),
-                    });
-                }
-                Variant::Transparent {
-                    transparent: Transparent(trans_field),
-                    variant_name,
-                    field_list,
-                } => {
-                    let trans_expand = match trans_field {
-                        FieldRef::Named(ref field) => quote! { #field },
-                        FieldRef::Indexed(index) => Ident::new(&format!("_{index}"), variant_name.span()).into_token_stream(),
-                    };
-
-                    let field_pat = field_list.pattern()?;
-
-                    source_expand.push(quote! {
-                        &Self::#variant_name #field_pat => #root_expand::error::Error::source(#trans_expand),
-                    });
-
-                    display_expand.push(quote! {
-                        &Self::#variant_name #field_pat => #root_expand::fmt::Display::fmt(#trans_expand, f),
-                    });
-                }
-                Variant::Forward {
-                    format: Format { format, format_args },
-                    variant_name,
-                    field_ref,
-                    field_type,
-                } => {
-                    let bare_field_name = quote!(#field_ref);
-
-                    source_expand.push(quote! {
-                        &Self::#variant_name { #bare_field_name: ref target_field }  => #root_expand::error::Error::source(target_field),
-                    });
-
-                    from_expand.push(match field_ref {
-                        FieldRef::Named(ref field) => quote! {
-                            #[automatically_derived]
-                            impl #impl_generics From<#field_type> for #name_ident #ty_generics #where_clause {
-                                #inline_expand
-                                fn from(#field: #field_type) -> Self {
-                                    Self::#variant_name { #field }
-                                }
-                            }
-                        },
-                        FieldRef::Indexed(..) => quote! {
-                            #[automatically_derived]
-                            impl #impl_generics From<#field_type> for #name_ident #ty_generics #where_clause {
-                                #inline_expand
-                                fn from(field: #field_type) -> Self {
-                                    Self::#variant_name(field)
-                                }
-                            }
-                        },
-                    });
-
-                    let replaced_field_name = match field_ref {
-                        FieldRef::Named(..) => None,
-                        FieldRef::Indexed(ref field) => Some({
-                            let ident = Ident::new(&format!("_{field}"), variant_name.span());
-
-                            quote! {
-                                : ref #ident
-                            }
-                        }),
-                    };
-
-                    display_expand.push(quote! {
-                        &Self::#variant_name { #bare_field_name #replaced_field_name }  => #root_expand::write!(f, #format, #format_args),
-                    });
-                }
-            }
-        }
+    /// Compose conversion, display, and error implementations for one
+    /// structure.
+    fn expand_with(self, (): Self::Context) -> syn::Result<TokenStream> {
+        let Self(structure) = self;
+        let (header, fields, display, source, conversion) = structure.parts();
+        let (inline, import, name, generics) = header.parts();
+        let context = Context::new(inline, import);
+        let display = DisplayImpl::new(&name, &generics, &fields, &display).expand_with(context.clone())?;
+        let error = ErrorImpl::new(&name, &generics, &fields, &source).expand_with(context.clone())?;
+        let conversion = conversion
+            .as_ref()
+            .map(|conversion| ConversionImpl::structure(&name, &generics, &fields, conversion).expand_with(context.clone()))
+            .transpose()?;
 
         Ok(quote! {
-            #(#from_expand)*
-
-            #[automatically_derived]
-            impl #impl_generics #root_expand::error::Error for #name_ident #ty_generics #where_clause {
-                #inline_expand
-                fn source(&self) -> Option<&(dyn #root_expand::error::Error + 'static)> {
-                    match self {
-                        #(#source_expand)*
-                    }
-                }
-            }
-
-            #[automatically_derived]
-            impl #impl_generics #root_expand::fmt::Display for #name_ident #ty_generics #where_clause {
-                #inline_expand
-                fn fmt(&self, f: &mut #root_expand::fmt::Formatter<'_>) -> #root_expand::fmt::Result {
-                    match self {
-                        #(#display_expand)*
-                    }
-                }
-            }
+            #conversion
+            #display
+            #error
         })
+    }
+}
+
+/// Expansion request for one validated enumeration.
+struct EnumerationExpansion(Enumeration);
+
+impl Expand for EnumerationExpansion {
+    /// Enumeration expansion is self-contained after validation.
+    type Context = ();
+
+    /// Compose conversions, display, and error implementations for one
+    /// enumeration.
+    fn expand_with(self, (): Self::Context) -> syn::Result<TokenStream> {
+        let Self(enumeration) = self;
+        let (header, variants) = enumeration.parts();
+        let (inline, import, name, generics) = header.parts();
+        let context = Context::new(inline, import);
+        let display = EnumDisplayImpl::new(&name, &generics, &variants).expand_with(context.clone())?;
+        let error = EnumErrorImpl::new(&name, &generics, &variants).expand_with(context.clone())?;
+        let conversions = variants
+            .iter()
+            .filter_map(|variant| {
+                variant
+                    .conversion()
+                    .map(|conversion| ConversionImpl::variant(&name, &generics, variant, conversion).expand_with(context.clone()))
+            })
+            .collect::<syn::Result<Vec<_>>>()?;
+
+        Ok(quote! {
+            #(#conversions)*
+            #display
+            #error
+        })
+    }
+}
+
+/// Shared immutable inputs for generated trait implementations.
+#[derive(Clone, Debug)]
+pub struct Context {
+    /// Rendered inline attribute for generated methods.
+    inline: TokenStream,
+
+    /// Generated path root used by implementations.
+    root: TokenStream,
+}
+
+impl Context {
+    /// Construct generation context from validated global options.
+    #[must_use]
+    #[inline]
+    fn new(inline: Option<Inline>, import: Option<Import>) -> Self {
+        let inline = match inline {
+            Some(Inline::Neutral) => quote! { #[inline] },
+            Some(Inline::Always) => quote! { #[inline(always)] },
+            Some(Inline::Never) => quote! { #[inline(never)] },
+            None => TokenStream::new(),
+        };
+        let root = match import {
+            Some(Import(path)) => path.to_token_stream(),
+            None => quote! { ::core },
+        };
+
+        Self { inline, root }
+    }
+
+    /// Return the generated inline attribute.
+    #[inline]
+    #[must_use]
+    const fn inline(&self) -> &TokenStream {
+        let Self { inline, .. } = self;
+
+        inline
+    }
+
+    /// Return the generated root path.
+    #[inline]
+    #[must_use]
+    const fn root(&self) -> &TokenStream {
+        let Self { root, .. } = self;
+
+        root
     }
 }

@@ -1,68 +1,22 @@
 use proc_macro::TokenStream;
 
-use fack_codegen::{Target, expand::Expand};
+use fack_codegen::generate;
 
-/// Derive the `Error` trait for a struct.
+/// Derive `Display` and `Error` implementations from `#[error(...)]`
+/// declarations.
 ///
-/// The `#[derive(Error)]` macro provides a declarative way to implement
-/// both the [`Error`] and [`Display`] traits for your custom error types.
-/// It is controlled by `#[error(...)]` *type-level attributes* that specify
-/// how the error should behave.
-///
-/// # General form
-///
-/// ```ignore
-/// #[derive(Error, Debug)]
-/// #[error("a formatted message {arg}", arg)]
-/// // #[error(source(...))]
-/// // #[error(transparent(...))]
-/// // #[error(from)]
-/// struct MyError { /* fields */ }
-/// ```
-///
-/// The attribute syntax follows the form:
-///
-/// ```text
-/// #[error(<parameter>)]
-/// ```
-///
-/// Multiple `#[error(...)]` attributes can be applied to the same type,
-/// and are classified according to their *parameter kind*.
-///
-///
-/// # Attribute kinds
-///
-/// The following attribute kinds are supported:
-///
-/// ## `#[error("...")]` - format string
-///
-/// Provides a [`Display`] implementation for the error type, using
-/// Rust formatting syntax. Additional expressions may be listed as
-/// comma-separated arguments.
+/// A format string defines ordinary display behavior.
 ///
 /// ```rust
 /// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
-/// #[error("failed to read file: {path}")]
+/// #[error("failed to read {path}")]
 /// struct ReadError {
 ///     path: String,
 /// }
 /// ```
 ///
-/// Expands to:
-///
-/// ```ignore
-/// impl std::fmt::Display for ReadError {
-///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-///         write!(f, "failed to read file: {}", self.path)
-///     }
-/// }
-/// ```
-///
-/// ## `#[error(source(<field>))]` - source field
-///
-/// Declares which field represents the underlying cause of the error.
-/// This field will be returned from `Error::source`.
+/// `source(field)` selects the ordinary error source.
 ///
 /// ```rust
 /// # use fack_macro::Error;
@@ -74,19 +28,10 @@ use fack_codegen::{Target, expand::Expand};
 /// }
 /// ```
 ///
-/// Produces:
-/// ```ignore
-/// impl std::error::Error for NetworkError {
-///     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-///         Some(&self.io)
-///     }
-/// }
-/// ```
+/// `transparent(field)` requires exactly one non-optional field. Display
+/// forwards to that field and source chaining forwards through the field's own
+/// `Error::source` implementation.
 ///
-/// ## `#[error(transparent(<field>))]` - transparent wrapper
-///
-/// Makes the error type a transparent wrapper around one of its fields.
-/// Both [`Display`] and [`Error`] are forwarded directly to that field.
 /// ```rust
 /// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
@@ -94,96 +39,61 @@ use fack_codegen::{Target, expand::Expand};
 /// struct Wrapper(std::io::Error);
 /// ```
 ///
-/// This makes `Wrapper` behave exactly like its inner error for
-/// formatting and chaining purposes.
+/// `from` requires exactly one field. It generates `From<T>` and selects that
+/// field as the ordinary source.
 ///
-///
-/// ## `#[error(from)]` conversion
-///
-/// Requests that a `From<T>` implementation be generated for a specified
-/// field type, allowing automatic conversion into the error type.
 /// ```rust
 /// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
 /// #[error("parse failed")]
 /// #[error(from)]
-/// struct ParseError {
-///     inner: std::num::ParseIntError,
-/// }
+/// struct ParseError(std::num::ParseIntError);
 /// ```
 ///
-/// Allows:
-/// ```ignore
-/// let err: ParseError = "abc".parse::<u32>().unwrap_err().into();
-/// ```
+/// `display(path)` selects a custom formatter function.
 ///
-///
-/// # Enums
-///
-/// Enums may use the same attribute kinds at the *variant* level.
-/// Each variant can provide its own formatting, source, or transparency.
-/// ```
+/// ```rust
 /// # use fack_macro::Error;
+/// fn render(error: &Rendered, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+///     let Rendered { code } = error;
+///     write!(f, "rendered {code}")
+/// }
+///
 /// #[derive(Error, Debug)]
-/// enum MyError {
-///     #[error("invalid input: {_0}")]
-///     InvalidInput(String),
-///
-///     #[error(transparent(inner))]
-///     Io {
-///         inner: std::io::Error,
-///     },
-///
-///     #[error("other error")]
-///     Other,
+/// #[error(display(render))]
+/// struct Rendered {
+///     code: u8,
 /// }
 /// ```
 ///
+/// Inline control is optional. Omitting it emits no explicit inline attribute.
+/// `inline` and `inline(neutral)` emit ordinary `#[inline]`. The `always` and
+/// `never` strategies emit the corresponding Rust attributes.
 ///
-/// # Inline options
-///
-/// Inline behavior for generated methods can be controlled using:
 /// ```rust
 /// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
-/// #[error(inline(always))]
-/// #[error("{msg}")]
-/// struct FastError {
-///     msg: &'static str,
-/// }
+/// #[error(inline(never))]
+/// #[error("rare error")]
+/// struct RareError;
 /// ```
 ///
-/// Valid values are:
-/// - `neutral` (default) → `#[inline]`
-/// - `always` → `#[inline(always)]`
-/// - `never` → `#[inline(never)]`
+/// Generated paths use `::core` by default. `import(path)` selects a different
+/// root.
 ///
-/// When omitted, no explicit `#[inline(...)]` attribute is emitted.
-///
-///
-/// # Root import
-///
-/// All generated code defaults to using `::core`. This can be overridden:
 /// ```rust
 /// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
-/// #[error("{msg}")]
 /// #[error(import(::std))]
-/// struct StdError {
-///     msg: &'static str,
-/// }
+/// #[error("standard error")]
+/// struct StdError;
 /// ```
-///
-/// This allows compatibility with `std::error::Error` where desired.
-///
-/// [`Error`]: error
-/// [`Display`]: core::fmt::Display
 #[proc_macro_derive(Error, attributes(error))]
 pub fn error(input: TokenStream) -> TokenStream {
-    let input = &syn::parse_macro_input!(input as syn::DeriveInput);
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
-    match Target::input(input).map(Expand::target) {
-        Ok(Ok(target_stream)) => TokenStream::from(target_stream),
-        Err(target_error) | Ok(Err(target_error)) => target_error.to_compile_error().into(),
+    match generate(&input) {
+        Ok(tokens) => TokenStream::from(tokens),
+        Err(error) => error.to_compile_error().into(),
     }
 }
