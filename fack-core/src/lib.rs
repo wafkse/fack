@@ -1,6 +1,6 @@
-//! Core *Fack* utilities for error encapsulation and handling.
+//! Core error capability used by the `fack` facade.
 //!
-//! This module provides the generator code for [`Error`] implementations.
+//! This crate owns the blanket [`Error`] trait and no code generation logic.
 //!
 //! [`Error`]: crate::error::Error
 #![no_std]

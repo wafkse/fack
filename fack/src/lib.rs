@@ -1,338 +1,140 @@
-//! Declarative error handling for Rust with `no_std` support and
-//! zero-allocation runtime.
+//! Declarative error derivation with `no_std` support and zero allocation in
+//! generated runtime code.
 //!
-//! This library provides a `#[derive(Error)]` macro that generates complete
-//! `Error` and `Display` implementations from declarative attributes.
+//! `fack` generates `Display`, `Error`, and optional `From` implementations
+//! from `#[error(...)]` declarations.
 //!
-//! # Features
-//!
-//! - **`no_std` compatible**: Uses `::core` by default, optional `::std`
-//!   support via `#[error(import(::std))]`
-//! - **Zero allocation**: No heap allocations in generated error
-//!   implementations
-//! - **Declarative attributes**: Configure all error behavior through
-//!   `#[error(...)]` attributes
-//! - **Composable codegen**: Standalone `fack-codegen` library available for
-//!   custom tooling
-//! - **Span preservation**: Maintains accurate source spans for IDE hints and
-//!   LSP integration
-//!
-//! # Quick Start
+//! # Quick start
 //!
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
-//! #[error("file not found: {path}")]
+//! #[error("file not found {path}")]
 //! struct FileError {
 //!     path: String,
 //! }
 //! ```
 //!
-//! # Attribute Reference
+//! # Formatting
 //!
-//! ## Format String: `#[error("...")]`
+//! Named and tuple fields can be captured directly. Explicit Rust format
+//! arguments are also supported.
 //!
-//! A `Display` implementation is generated for your error type. The format
-//! string supports field interpolation using standard Rust formatting syntax.
-//!
-//! **Named fields**: Reference directly by name in the format string:
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
-//! #[error("file not found: {path}")]
-//! struct FileError {
-//!     path: String,
+//! #[error("invalid input {input:?}")]
+//! struct InputError {
+//!     input: String,
 //! }
-//! ```
-//!
-//! **Tuple struct fields**: Use `_N` syntax (underscore prefix for numeric
-//! indices):
-//!
-//! ```rust
-//! use fack::prelude::*;
 //!
 //! #[derive(Error, Debug)]
-//! #[error("invalid value: {_0}")]
+//! #[error("invalid value {0}")]
 //! struct ValueError(i32);
 //! ```
 //!
-//! **Multiple fields**:
+//! A custom formatter can be selected when a format string is not the right
+//! abstraction.
+//!
 //! ```rust
 //! # use fack::prelude::*;
+//! fn render(error: &RenderedError, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//!     let RenderedError { code } = error;
+//!     write!(f, "rendered {code}")
+//! }
+//!
 //! #[derive(Error, Debug)]
-//! #[error("range error: {value} not in {min}..{max}")]
-//! struct RangeError {
-//!     value: i32,
-//!     min: i32,
-//!     max: i32,
+//! #[error(display(render))]
+//! struct RenderedError {
+//!     code: u8,
 //! }
 //! ```
 //!
-//! **Format specifiers**:
+//! # Sources
+//!
+//! `#[error(source(field))]` exposes the selected field as the ordinary source.
+//! Direct, boxed, optional, and optional boxed source fields are supported.
+//!
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
-//! #[error("parse error: {input:?}")]
-//! struct ParseError {
-//!     input: String,
-//! }
-//! ```
-//!
-//! All format placeholders and specifiers from `std::fmt` are supported.
-//!
-//! ## Source Declaration: `#[error(source(field))]`
-//!
-//! The `Error::source()` method is implemented to return the specified field.
-//! This enables error chain traversal for debugging and logging. Any type
-//! implementing `std::error::Error` can be a source.
-//!
-//! **Named fields**:
-//! ```rust
-//! # use fack::prelude::*;
-//! #[derive(Error, Debug)]
-//! #[error("network request failed")]
-//! #[error(source(inner))]
-//! struct NetworkError {
-//!     inner: std::io::Error,
+//! #[error("request failed")]
+//! #[error(source(io))]
+//! struct RequestError {
+//!     io: std::io::Error,
 //!     url: String,
 //! }
 //! ```
 //!
-//! **Tuple fields** (by index):
+//! `#[error(transparent(field))]` requires exactly one non-optional field.
+//! Display forwards to that field and source chaining forwards through the
+//! field's own `Error::source` implementation.
+//!
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
-//! #[error("wrapped error")]
-//! #[error(source(cause))]
-//! struct Wrapper {
-//!     cause: std::io::Error,
-//!     context: String,
-//! }
+//! #[error(transparent(0))]
+//! struct Wrapper(std::io::Error);
 //! ```
 //!
-//! The generated `source()` method returns `Option<&(dyn std::error::Error +
-//! 'static)>`.
+//! # Conversion
 //!
-//! ## Transparent Forwarding: `#[error(transparent(field))]`
-//!
-//! Forwards both `Display` and `Error::source()` directly to the specified
-//! field without adding additional formatting. The error type becomes a
-//! transparent wrapper.
-//!
-//! **Use case 1: Enum catch-all variant**:
-//! ```rust
-//! # use fack::prelude::*;
-//! #[derive(Error, Debug)]
-//! enum MyError {
-//!     #[error("known error type")]
-//!     Known(String),
-//!
-//!     #[error(transparent(0))]
-//!     Io(std::io::Error),
-//! }
-//! ```
-//!
-//! **Use case 2: Opaque public API**:
-//! ```rust
-//! # use fack::prelude::*;
-//! // Public error type that hides implementation details
-//! #[derive(Error, Debug)]
-//! #[error(transparent(inner))]
-//! pub struct PublicError {
-//!     inner: InternalError,
-//! }
-//!
-//! // Private, can change without breaking public API
-//! #[derive(Error, Debug)]
-//! #[error("internal error")]
-//! struct InternalError {
-//!     details: String,
-//! }
-//! ```
-//!
-//! The specified field must implement `std::error::Error`.
-//!
-//! ## Automatic Conversion: `#[error(from)]`
-//!
-//! Generates a `From<T>` implementation for automatic error conversion via the
-//! `?` operator. The type must have exactly one field.
-//!
-//! **Enum variants**:
+//! `#[error(from)]` requires exactly one field. It generates `From<T>` and
+//! makes that field the ordinary error source.
 //!
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
 //! enum AppError {
-//!     #[error("io error occurred")]
+//!     #[error("io error")]
 //!     #[error(from)]
 //!     Io(std::io::Error),
 //!
-//!     #[error("parse error occurred")]
+//!     #[error("parse error")]
 //!     #[error(from)]
 //!     Parse(std::num::ParseIntError),
 //! }
 //! ```
 //!
-//! This generates:
-//! ```rust,ignore
-//! impl From<std::io::Error> for AppError {
-//!     fn from(source: std::io::Error) -> Self {
-//!         AppError::Io(source)
-//!     }
-//! }
-//! // ... and similar for ParseIntError
-//! ```
+//! # Generation options
 //!
-//! **Structs**:
+//! Without an inline declaration, generated methods receive no explicit inline
+//! attribute. `#[error(inline)]` and `#[error(inline(neutral))]` emit ordinary
+//! `#[inline]`. The `always` and `never` strategies emit their corresponding
+//! Rust attributes.
+//!
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
-//! #[error("io operation failed: {_0}")]
-//! #[error(from)]
-//! struct IoError(std::io::Error);
+//! #[error(inline(never))]
+//! #[error("rare error")]
+//! struct RareError;
 //! ```
 //!
-//! **Important**: `#[error(from)]` automatically implies the field is also the
-//! error source, so you don't need to specify `#[error(source(...))]`
-//! separately.
+//! Generated paths use `::core` by default. `#[error(import(path))]` selects a
+//! different root.
 //!
-//! ## Inline Control: `#[error(inline(strategy))]`
-//!
-//! Controls inlining behavior of generated trait implementations. This affects
-//! all generated methods: `fmt` (Display), `source` (Error), and `from` (if
-//! applicable).
-//!
-//! **Strategies**:
-//!
-//! - **`neutral`** (default): Emits `#[inline]`, which suggests inlining but
-//!   lets the compiler decide. Appropriate for most error types.
-//!
-//! - **`always`**: Emits `#[inline(always)]`, forcing aggressive inlining. Use
-//!   for performance-critical error paths where function call overhead matters:
-//!
-//!   ```rust
-//!   # use fack::prelude::*;
-//!   #[derive(Error, Debug)]
-//!   #[error(inline(always))]
-//!   #[error("hot path error: {code}")]
-//!   struct FastError {
-//!       code: u32,
-//!   }
-//!   ```
-//!
-//! - **`never`**: Emits `#[inline(never)]`, preventing inlining. Use to reduce
-//!   code size for rarely constructed errors or to maintain consistent stack
-//!   traces:
-//!
-//!   ```rust
-//!   # use fack::prelude::*;
-//!   #[derive(Error, Debug)]
-//!   #[error(inline(never))]
-//!   #[error("rare error condition")]
-//!   struct RareError {
-//!       details: String,
-//!   }
-//!   ```
-//!
-//! When applied at the enum level, the strategy affects all variants.
-//!
-//! ## Import Root: `#[error(import(path))]`
-//!
-//! Overrides the default `::core` import path used in generated code. By
-//! default, all generated code uses `::core` for `no_std` compatibility.
-//!
-//! **Using `std` explicitly**:
 //! ```rust
 //! # use fack::prelude::*;
 //! #[derive(Error, Debug)]
 //! #[error(import(::std))]
-//! #[error("standard library error")]
-//! struct StdError {
-//!     message: String,
-//! }
+//! #[error("standard error")]
+//! struct StdError;
 //! ```
 //!
-//! This generates:
-//! ```rust,ignore
-//! impl ::std::error::Error for StdError { /* ... */ }
-//! impl ::std::fmt::Display for StdError { /* ... */ }
-//! ```
+//! Enum-wide generation options belong on the enum. Display, source,
+//! transparency, and conversion declarations belong on variants.
 //!
-//! **Custom preludes**:
-//! ```rust,ignore
-//! # use fack::prelude::*;
-//! #[derive(Error, Debug)]
-//! #[error(import(crate::prelude))]
-//! #[error("custom prelude error")]
-//! struct CustomError {
-//!     msg: String,
-//! }
-//! ```
+//! # Generated code guarantees
 //!
-//! **Use cases**:
-//! - Explicitly targeting `std` in std-only crates
-//! - Working with custom error trait definitions
-//! - Integrating with frameworks providing error handling primitives
-//!
-//! # Enum Support
-//!
-//! Enums support per-variant attribute configuration:
-//!
-//! ```rust
-//! # use fack::prelude::*;
-//! #[derive(Error, Debug)]
-//! enum FileError {
-//!     #[error("file not found: {path}")]
-//!     NotFound { path: String },
-//!
-//!     #[error("permission denied: {_0}")]
-//!     #[error(source(0))]
-//!     PermissionDenied(std::io::Error),
-//!
-//!     #[error(transparent(0))]
-//!     Io(std::io::Error),
-//! }
-//! ```
-//!
-//! Type-level attributes apply to all variants:
-//! ```rust
-//! # use fack::prelude::*;
-//! #[derive(Error, Debug)]
-//! #[error(inline(always))]  // Applies to all variants
-//! #[error(import(::std))]   // Applies to all variants
-//! enum OptimizedError {
-//!     #[error("first variant")]
-//!     First,
-//!     #[error("second variant")]
-//!     Second,
-//! }
-//! ```
-//!
-//! # Type Support
-//!
-//! **Supported types**:
-//! - Structs with named fields
-//! - Structs with unnamed fields (tuple structs)
-//! - Unit structs
-//! - Enums with any variant style
-//!
-//! **Unsupported types**:
-//! - Union types (unions cannot implement `Error`)
-//!
-//! # Generated Code Guarantees
-//!
-//! All generated implementations:
-//! - Include `#[automatically_derived]` for tool recognition
-//! - Properly destructure fields in pattern matches
-//! - Correctly forward lifetimes and generic parameters
-//! - Contain no unsafe code
-//! - Require no heap allocations at runtime
-//! - Are `no_std` compatible (use `::core` by default)
+//! Generated implementations contain no unsafe code and allocate nothing at
+//! runtime. Formatting and source bounds are added only where the generated
+//! implementation requires them.
 #![no_std]
 #![forbid(unsafe_code, missing_docs, rustdoc::all, clippy::all, clippy::pedantic)]
 
 pub mod prelude {
-    //! Re-exports the most commonly used traits and types.
+    //! Commonly used `fack` exports.
 
     pub use fack_core::prelude::*;
 

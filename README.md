@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/wafkse/fack/actions/workflows/ci.yml/badge.svg?branch=trunk)](https://github.com/wafkse/fack/actions/workflows/ci.yml)
 
-Error handling derive macro for Rust. `no_std` compatible, doesn't allocate.
+Declarative Rust error derivation with `no_std` support and zero allocation in generated runtime code.
 
 ```rust,no_run
 use fack::prelude::*;
 
 #[derive(Error, Debug)]
-#[error("file not found: {path}")]
+#[error("file not found {path}")]
 struct FileError {
     path: String,
 }
@@ -18,33 +18,61 @@ struct FileError {
 
 ```toml
 [dependencies]
-fack = "0.1.2"
+fack = "0.2.0"
 ```
 
-## What's different from thiserror?
+## Design
 
-- Actually runs in `no_std` environments - uses `::core` by default, zero heap allocations at runtime
-- Control inlining with `#[error(inline(...))]` - matters for hot paths and code size
-- `fack-codegen` is a standalone library - use it in your own macros or build scripts
-- Preserves source spans properly for better IDE integration
+- All derive behavior uses the single `#[error(...)]` helper namespace
+- Generated implementations use `::core` unless an import root is selected
+- Format fields and source fields are resolved before expansion
+- `fack-codegen` exposes opaque parse, validate, and expansion stages for downstream tooling
+- Generated `Display`, `Error`, and `From` implementations allocate nothing
 
-If you're writing embedded code or care about allocation-free error handling, this might be useful.
+## Formatting
 
-## Examples
-
-Basic struct:
+Named and tuple fields can be captured directly. Explicit Rust format arguments are also supported.
 
 ```rust,no_run
 use fack::prelude::*;
 
 #[derive(Error, Debug)]
-#[error("database error: {msg}")]
-struct DbError {
-    msg: String,
+#[error("invalid input {input:?}")]
+struct InputError {
+    input: String,
+}
+
+#[derive(Error, Debug)]
+#[error("invalid value {0}")]
+struct ValueError(i32);
+
+#[derive(Error, Debug)]
+#[error("normalized {value}", value = input.trim())]
+struct NormalizedError {
+    input: String,
 }
 ```
 
-Error chaining:
+A custom formatter can be selected when a format string is not the right abstraction.
+
+```rust,no_run
+use fack::prelude::*;
+
+fn render(error: &RenderedError, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let RenderedError { code } = error;
+    write!(f, "rendered {code}")
+}
+
+#[derive(Error, Debug)]
+#[error(display(render))]
+struct RenderedError {
+    code: u8,
+}
+```
+
+## Sources
+
+`#[error(source(field))]` exposes the selected field as the ordinary source. Direct, boxed, optional, and optional boxed sources are supported.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -58,25 +86,19 @@ struct RequestError {
 }
 ```
 
-Enums with variants:
+`#[error(transparent(field))]` requires exactly one non-optional field. Display forwards to that field and source chaining forwards through its own `Error::source` implementation.
 
 ```rust,no_run
 use fack::prelude::*;
 
 #[derive(Error, Debug)]
-enum ParseError {
-    #[error("invalid syntax at line {line}")]
-    Syntax { line: usize },
-
-    #[error("unexpected end of file")]
-    Eof,
-
-    #[error(transparent(0))]
-    Io(std::io::Error),
-}
+#[error(transparent(0))]
+struct Wrapper(std::io::Error);
 ```
 
-Auto-conversion with `from`:
+## Conversion
+
+`#[error(from)]` requires exactly one field. It generates `From<T>` and makes that field the ordinary error source.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -91,101 +113,52 @@ enum AppError {
     #[error(from)]
     Parse(std::num::ParseIntError),
 }
-
-// Now you can use ? with these error types
-fn example() -> Result<(), AppError> {
-    let _file = std::fs::read("file.txt")?;  // converts io::Error
-    let _num: i32 = "123".parse()?;          // converts ParseIntError
-    Ok(())
-}
 ```
 
-## Attributes
+## Generation options
 
-**Format strings** - `#[error("message")]`
-
-Use `{field}` for named fields, `{_0}` for tuple fields. Standard format specifiers work.
+Without an inline declaration, generated methods receive no explicit inline attribute. `#[error(inline)]` and `#[error(inline(neutral))]` emit ordinary `#[inline]`. The `always` and `never` strategies emit their corresponding Rust attributes.
 
 ```rust,no_run
-#[derive(Error, Debug)]
-#[error("value {value} out of range {min}..{max}")]
-struct RangeError { value: i32, min: i32, max: i32 }
+use fack::prelude::*;
 
 #[derive(Error, Debug)]
-#[error("invalid input: {_0:?}")]
-struct InputError(String);
+#[error(inline(never))]
+#[error("rare error")]
+struct RareError;
 ```
 
-**Source** - `#[error(source(field))]`
-
-Mark which field contains the underlying error. Enables error chain traversal.
+Generated paths use `::core` by default. `#[error(import(path))]` selects a different root.
 
 ```rust,no_run
-#[derive(Error, Debug)]
-#[error("operation failed")]
-#[error(source(cause))]
-struct OpError {
-    cause: std::io::Error,
-}
-```
+use fack::prelude::*;
 
-**Transparent** - `#[error(transparent(field))]`
-
-Forward display and source to an inner error. Useful for wrapper types.
-
-```rust,no_run
-#[derive(Error, Debug)]
-#[error(transparent(0))]
-struct Wrapper(std::io::Error);
-```
-
-**From** - `#[error(from)]`
-
-Generate `From<T>` impl for the error type. Requires exactly one field.
-
-```rust,no_run
-#[derive(Error, Debug)]
-#[error("wrapped io error")]
-#[error(from)]
-struct IoWrapper(std::io::Error);
-```
-
-**Inline** - `#[error(inline(strategy))]`
-
-Control inlining of generated methods. Options: `neutral` (default), `always`, `never`.
-
-```rust,no_run
-#[derive(Error, Debug)]
-#[error(inline(always))]  // force inline for hot paths
-#[error("fast error")]
-struct HotPathError { code: u32 }
-```
-
-**Import** - `#[error(import(path))]`
-
-Override the default `::core` import. Use `::std` if you need std-specific features.
-
-```rust,no_run
 #[derive(Error, Debug)]
 #[error(import(::std))]
-#[error("std error")]
-struct StdError { msg: String }
+#[error("standard error")]
+struct StdError;
 ```
 
-## Documentation
+Enum-wide generation options belong on the enum. Display, source, transparency, and conversion declarations belong on variants.
 
-Full docs at [docs.rs/fack](https://docs.rs/fack).
+## Code generation engine
 
-## Workspace structure
+`fack-codegen` is a regular `no_std` library rather than a proc-macro crate. Its supported API keeps compiler representations opaque while allowing downstream tools to choose staged or one-shot generation.
 
-This repo has four crates:
+```rust,ignore
+let target = fack_codegen::Target::input(&input)?;
+let validated = target.validate()?;
+let tokens = validated.expand()?;
 
-- `fack` - Main crate, re-exports everything
-- `fack-core` - Error trait definition
-- `fack-macro` - Procedural macro implementation
-- `fack-codegen` - Code generation engine
+let tokens = fack_codegen::generate(&input)?;
+```
 
-The `fack-codegen` crate is deliberately not a proc-macro crate. You can depend on it in regular code to build custom error macros or generate errors at build time.
+## Workspace
+
+- `fack` provides the user-facing facade
+- `fack-core` provides the blanket error capability
+- `fack-macro` provides the derive macro entry point
+- `fack-codegen` provides the staged generation engine
 
 ## License
 
@@ -193,6 +166,6 @@ GPL-3.0
 
 Copyright (C) 2025 W. Frakchi
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This program is free software. You can redistribute it and modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License or any later version.
 
 See [LICENSE.md](LICENSE.md) for the full text.
