@@ -1,0 +1,5 @@
+error: error cannot declare both a format string and `display(...)`
+ --> tests/ui/display_format.rs:6:8
+  |
+6 | struct Error;
+  |        ^^^^^

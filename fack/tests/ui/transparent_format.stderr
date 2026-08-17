@@ -1,0 +1,5 @@
+error: transparent error cannot also declare display formatting
+ --> tests/ui/transparent_format.rs:5:8
+  |
+5 | struct Error(std::io::Error);
+  |        ^^^^^

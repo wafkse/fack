@@ -1,0 +1,5 @@
+error: unknown named field
+ --> tests/ui/unknown_source.rs:4:16
+  |
+4 | #[error(source(missing))]
+  |                ^^^^^^^

@@ -1,0 +1,5 @@
+error: ambiguous numeric field capture with explicit positional format arguments
+ --> tests/ui/ambiguous_position.rs:3:9
+  |
+3 | #[error("outer {0}", 3)]
+  |         ^^^^^^^^^^^

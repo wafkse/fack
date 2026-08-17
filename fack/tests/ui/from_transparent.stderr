@@ -1,0 +1,5 @@
+error: transparent error cannot also derive `From`
+ --> tests/ui/from_transparent.rs:5:8
+  |
+5 | struct Error(std::io::Error);
+  |        ^^^^^

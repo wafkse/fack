@@ -1,0 +1,9 @@
+[package]
+name = "fack-no-std"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+fack = { path = "../.." }
+
+[workspace]

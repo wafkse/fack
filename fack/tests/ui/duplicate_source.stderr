@@ -1,0 +1,11 @@
+error: parameter declared more than once
+ --> tests/ui/duplicate_source.rs:4:9
+  |
+4 | #[error(source(inner))]
+  |         ^^^^^^
+
+error: duplicate parameter
+ --> tests/ui/duplicate_source.rs:5:9
+  |
+5 | #[error(source(inner))]
+  |         ^^^^^^
