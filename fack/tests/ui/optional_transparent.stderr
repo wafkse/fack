@@ -1,5 +1,5 @@
 error: transparent error source cannot be optional
- --> tests/ui/optional_transparent.rs:4:8
+ --> tests/ui/optional_transparent.rs:3:21
   |
-4 | struct Error(Option<std::io::Error>);
-  |        ^^^^^
+3 | #[error(transparent(0))]
+  |                     ^

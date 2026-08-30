@@ -1,3 +1,9 @@
+//! Procedural macro entry point for the `fack` derive language.
+//!
+//! This crate performs only compiler-token conversion and delegates parsing,
+//! semantic validation, and expansion to `fack-codegen`. The accepted helper
+//! attribute language is documented on the `Error` derive macro.
+
 use proc_macro::TokenStream;
 
 use fack_codegen::generate;
@@ -28,15 +34,18 @@ use fack_codegen::generate;
 /// }
 /// ```
 ///
-/// `transparent(field)` requires exactly one non-optional field. Display
-/// forwards to that field and source chaining forwards through the field's own
-/// `Error::source` implementation.
+/// `transparent(field)` selects one non-optional error field. Extra fields may
+/// retain context. Display forwards to the selected field and source chaining
+/// forwards through that field's own `Error::source` implementation.
 ///
 /// ```rust
 /// # use fack_macro::Error;
 /// #[derive(Error, Debug)]
-/// #[error(transparent(0))]
-/// struct Wrapper(std::io::Error);
+/// #[error(transparent(inner))]
+/// struct Wrapper {
+///     context: u8,
+///     inner: std::io::Error,
+/// }
 /// ```
 ///
 /// `from` requires exactly one field. It generates `From<T>` and selects that

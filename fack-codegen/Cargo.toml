@@ -15,4 +15,4 @@ readme = "../README.md"
 [dependencies]
 proc-macro2 = { version = "1.0" }
 quote = { version = "1.0" }
-syn = { version = "2.0", default-features = false, features = ["parsing", "printing", "derive", "extra-traits", "clone-impls"] }
+syn = { version = "3.0", default-features = false, features = ["parsing", "printing", "derive", "extra-traits", "clone-impls"] }

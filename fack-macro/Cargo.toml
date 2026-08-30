@@ -17,4 +17,4 @@ proc-macro = true
 
 [dependencies]
 fack-codegen = { version = "0.2.0", path = "../fack-codegen" }
-syn = { version = "2.0", default-features = false, features = ["parsing", "proc-macro", "printing", "derive", "extra-traits", "clone-impls"] }
+syn = { version = "3.0", default-features = false, features = ["parsing", "proc-macro", "printing", "derive", "extra-traits", "clone-impls"] }

@@ -1,15 +1,21 @@
 //! Validated error semantics carried into code generation.
+//!
+//! This subsystem owns proof-bearing display, source, conversion, and variant
+//! states. Its values are constructed only by semantic validation and are the
+//! complete input accepted by expansion.
 
 use alloc::{boxed::Box, vec::Vec};
 
-use syn::{Generics, Ident, Path, Type};
+use syn::{Generics, Ident, Path};
 
-use crate::{
-    field::{FieldId, Fields},
-    format::Resolved,
-    source::Source,
-    syntax::{Import, Inline},
-};
+use crate::input::{Field, Fields, ImportRoot, InlinePolicy};
+
+mod format;
+mod source;
+mod validate;
+
+pub use format::{BindingRequirement, FormatTrait, Resolved};
+pub use source::{Source, TransparentSource};
 
 /// A validated error declaration ready for expansion.
 #[derive(Clone, Debug)]
@@ -23,12 +29,13 @@ pub enum Target {
 
 /// Shared validated identity and generation options for an error type.
 #[derive(Clone, Debug)]
+// NOTE(invariant): All generation options and type identity belong to one validated derive target.
 pub struct Header {
     /// Validated generated inline policy.
-    inline: Option<Inline>,
+    inline: InlinePolicy,
 
     /// Validated generated root import.
-    import: Option<Import>,
+    import: ImportRoot,
 
     /// Validated error type identifier.
     name: Ident,
@@ -41,7 +48,7 @@ impl Header {
     /// Construct a validated error type header.
     #[must_use]
     #[inline]
-    pub const fn new(inline: Option<Inline>, import: Option<Import>, name: Ident, generics: Generics) -> Self {
+    pub const fn new(inline: InlinePolicy, import: ImportRoot, name: Ident, generics: Generics) -> Self {
         Self {
             inline,
             import,
@@ -52,7 +59,7 @@ impl Header {
 
     /// Consume the header into generation options and type identity.
     #[inline]
-    pub fn parts(self) -> (Option<Inline>, Option<Import>, Ident, Generics) {
+    pub fn parts(self) -> (InlinePolicy, ImportRoot, Ident, Generics) {
         let Self {
             inline,
             import,
@@ -66,6 +73,7 @@ impl Header {
 
 /// A validated structure error.
 #[derive(Clone, Debug)]
+// NOTE(invariant): Every resolved field in display, source, or conversion state was produced from this structure field set.
 pub struct Structure {
     /// Validated type identity and generation options.
     header: Header,
@@ -114,6 +122,7 @@ impl Structure {
 
 /// A validated enumeration error.
 #[derive(Clone, Debug)]
+// NOTE(invariant): Every stored variant is validated under the same enumeration header.
 pub struct Enumeration {
     /// Validated type identity and generation options.
     header: Header,
@@ -141,6 +150,7 @@ impl Enumeration {
 
 /// A validated enumeration variant.
 #[derive(Clone, Debug)]
+// NOTE(invariant): Every resolved field in display, source, or conversion state was produced from this variant field set.
 pub struct Variant {
     /// Validated source variant identifier.
     name: Ident,
@@ -176,7 +186,7 @@ impl Variant {
     #[inline]
     #[must_use]
     pub const fn name(&self) -> &Ident {
-        let Self { name, .. } = self;
+        let &Self { ref name, .. } = self;
 
         name
     }
@@ -185,7 +195,7 @@ impl Variant {
     #[inline]
     #[must_use]
     pub const fn fields(&self) -> &Fields {
-        let Self { fields, .. } = self;
+        let &Self { ref fields, .. } = self;
 
         fields
     }
@@ -194,7 +204,7 @@ impl Variant {
     #[inline]
     #[must_use]
     pub const fn display(&self) -> &Display {
-        let Self { display, .. } = self;
+        let &Self { ref display, .. } = self;
 
         display
     }
@@ -203,7 +213,7 @@ impl Variant {
     #[inline]
     #[must_use]
     pub const fn source(&self) -> &ErrorSource {
-        let Self { source, .. } = self;
+        let &Self { ref source, .. } = self;
 
         source
     }
@@ -212,7 +222,7 @@ impl Variant {
     #[inline]
     #[must_use]
     pub const fn conversion(&self) -> Option<&Conversion> {
-        let Self { conversion, .. } = self;
+        let &Self { ref conversion, .. } = self;
 
         conversion.as_ref()
     }
@@ -224,8 +234,8 @@ pub enum Display {
     /// A resolved Rust format string.
     Format(Resolved),
 
-    /// Transparent forwarding to the sole field.
-    Transparent(FieldId),
+    /// Transparent forwarding to the selected field.
+    Transparent(Field),
 
     /// A custom formatter function.
     Custom(Path),
@@ -240,43 +250,32 @@ pub enum ErrorSource {
     /// The error exposes one ordinary source field.
     Field(Source),
 
-    /// The error forwards through the sole transparent field.
-    Transparent(Source),
+    /// The error forwards through the selected transparent field.
+    Transparent(TransparentSource),
 }
 
 /// One validated automatic conversion.
 #[derive(Clone, Debug)]
+// NOTE(invariant): The stored field is the sole validated destination of the automatic conversion.
 pub struct Conversion {
     /// Resolved field used by the conversion.
-    field: FieldId,
-
-    /// Concrete source type accepted by `From`.
-    field_type: Type,
+    field: Field,
 }
 
 impl Conversion {
     /// Construct a conversion from its resolved field and type.
     #[inline]
     #[must_use]
-    pub const fn new(field: FieldId, field_type: Type) -> Self {
-        Self { field, field_type }
+    pub const fn new(field: Field) -> Self {
+        Self { field }
     }
 
     /// Return the converted field.
     #[inline]
     #[must_use]
-    pub const fn field(&self) -> FieldId {
-        let Self { field, .. } = self;
+    pub const fn field(&self) -> &Field {
+        let &Self { ref field } = self;
 
-        *field
-    }
-
-    /// Return the converted field type.
-    #[inline]
-    #[must_use]
-    pub const fn field_type(&self) -> &Type {
-        let Self { field_type, .. } = self;
-
-        field_type
+        field
     }
 }

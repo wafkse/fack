@@ -1,0 +1,5 @@
+error: tuple field index is out of bounds
+ --> tests/ui/indexed_out_of_bounds.rs:5:16
+  |
+5 | #[error(source(2))]
+  |                ^

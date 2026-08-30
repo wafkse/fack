@@ -1,81 +1,154 @@
 //! Error implementation and source-chain expansion.
+//!
+//! Error implementations, source methods, source expressions, and bound
+//! contribution are expansion nodes under the shared parent contract. Validated
+//! field proofs are consumed without source-level lookup.
 
 use alloc::vec::Vec;
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Generics, Ident};
+use syn::{Generics, Ident, Type};
 
 use crate::{
-    binding::Bind as _,
-    bounds::{self, Context as BoundContext, Contribute as _},
-    field::Fields,
-    semantics::{ErrorSource, Variant},
+    input::Fields,
+    semantic::{ErrorSource, Source, TransparentSource, Variant},
 };
 
-use crate::source::ExpandContext as SourceContext;
+use super::{Context, ErrorExpansion, Expand, FieldBinding, FieldPattern, FieldSelection, Predicate};
 
-use super::{Context, Expand};
+impl<'target> Expand for ErrorExpansion<'target> {
+    type Context = &'target Context;
+    type Output = TokenStream;
 
-/// One structure `Error` implementation request.
-pub struct ErrorImpl<'target> {
-    /// Error type identifier.
-    name: &'target Ident,
+    fn expand_with(self, context: Self::Context) -> syn::Result<Self::Output> {
+        let root = context.root();
+        let inline = context.inline();
 
-    /// Error type generic parameters.
-    generics: &'target Generics,
+        match self {
+            Self::Structure {
+                name,
+                generics,
+                fields,
+                source,
+            } => {
+                let generics = ErrorBoundExpansion {
+                    subject: ErrorBoundSubject::One(source),
+                    root,
+                }
+                .expand_with(generics.clone())?;
 
-    /// Fields available to source generation.
-    fields: &'target Fields,
+                let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    /// Validated source-chain behavior.
-    source: &'target ErrorSource,
-}
+                let method = SourceMethod { fields, source }.expand_with(context)?;
 
-impl<'target> ErrorImpl<'target> {
-    /// Construct one structure error expansion request.
-    pub const fn new(name: &'target Ident, generics: &'target Generics, fields: &'target Fields, source: &'target ErrorSource) -> Self {
-        Self {
-            name,
-            generics,
-            fields,
-            source,
+                Ok(quote! {
+                    #[automatically_derived]
+                    impl #impl_generics #root::error::Error for #name #ty_generics #where_clause {
+                        #method
+                    }
+                })
+            }
+            Self::Enumeration { name, generics, variants } => {
+                let generics = ErrorBoundExpansion {
+                    subject: ErrorBoundSubject::Variants(variants),
+                    root,
+                }
+                .expand_with(generics.clone())?;
+
+                let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+                let has_source = variants.iter().any(|variant| !matches!(variant.source(), &ErrorSource::None));
+                let method = if has_source {
+                    let arms = variants
+                        .iter()
+                        .map(|variant| VariantSourceArm { variant }.expand_with(context))
+                        .collect::<syn::Result<Vec<_>>>()?;
+
+                    quote! {
+                        #inline
+                        fn source(&self) -> Option<&(dyn #root::error::Error + 'static)> {
+                            match self {
+                                #(#arms),*
+                            }
+                        }
+                    }
+                } else {
+                    TokenStream::new()
+                };
+
+                Ok(quote! {
+                    #[automatically_derived]
+                    impl #impl_generics #root::error::Error for #name #ty_generics #where_clause {
+                        #method
+                    }
+                })
+            }
         }
     }
 }
 
-impl Expand for ErrorImpl<'_> {
-    /// Shared generation options used by the error implementation.
-    type Context = Context;
+/// Error source state whose generic requirements are being expanded.
+enum ErrorBoundSubject<'target> {
+    /// One structure source state.
+    One(&'target ErrorSource),
 
-    /// Generate a structure `Error` implementation and required source bounds.
-    fn expand_with(self, context: Self::Context) -> syn::Result<TokenStream> {
-        let Self {
-            name,
-            generics,
-            fields,
-            source,
-        } = self;
-        let root = context.root();
-        let mut generics = generics.clone();
-        let bound_context = BoundContext::new(fields, root);
+    /// Every source state in one enumeration.
+    Variants(&'target [Variant]),
+}
 
-        bounds::ErrorSelf.contribute(&mut generics, root);
-        source.contribute(&mut generics, &bound_context);
+/// Expansion node for error generic requirements.
+// NOTE(invariant): Every source subject has completed semantic validation before
+// bound generation starts.
+struct ErrorBoundExpansion<'target> {
+    /// Validated source state receiving generated bounds.
+    subject: ErrorBoundSubject<'target>,
 
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-        let method = SourceMethod { fields, source }.expand_with(context.clone())?;
+    /// Generated root path used by error predicates.
+    root: &'target TokenStream,
+}
 
-        Ok(quote! {
-            #[automatically_derived]
-            impl #impl_generics #root::error::Error for #name #ty_generics #where_clause {
-                #method
+impl ErrorBoundExpansion<'_> {
+    /// Add the source predicate required by one error source state.
+    fn contribute_source(source: &ErrorSource, generics: Generics, root: &TokenStream) -> syn::Result<Generics> {
+        let ty = match source {
+            &ErrorSource::Field(ref source) => Some(source.error_type()),
+            &ErrorSource::Transparent(ref source) => Some(source.error_type()),
+            &ErrorSource::None => None,
+        };
+
+        match ty.filter(|ty| !matches!(ty, &&Type::TraitObject(..))) {
+            Some(ty) => Predicate(quote! { #ty: #root::error::Error + 'static }).expand_with(generics),
+            None => Ok(generics),
+        }
+    }
+}
+
+impl Expand for ErrorBoundExpansion<'_> {
+    type Context = Generics;
+    type Output = Generics;
+
+    fn expand_with(self, generics: Self::Context) -> syn::Result<Self::Output> {
+        let Self { subject, root } = self;
+
+        let mut generics = Predicate(quote! { Self: #root::fmt::Debug + #root::fmt::Display }).expand_with(generics)?;
+
+        match subject {
+            ErrorBoundSubject::One(source) => Self::contribute_source(source, generics, root),
+            ErrorBoundSubject::Variants(variants) => {
+                for variant in variants {
+                    generics = Self::contribute_source(variant.source(), generics, root)?;
+                }
+
+                Ok(generics)
             }
-        })
+        }
     }
 }
 
 /// One generated `Error::source` method.
+// NOTE(invariant): The source semantics were validated against the borrowed
+// field collection before construction.
 struct SourceMethod<'target> {
     /// Fields available to the generated source method.
     fields: &'target Fields,
@@ -84,136 +157,168 @@ struct SourceMethod<'target> {
     source: &'target ErrorSource,
 }
 
-impl Expand for SourceMethod<'_> {
-    /// Shared generation options used by the source method.
-    type Context = Context;
+impl<'target> Expand for SourceMethod<'target> {
+    type Context = &'target Context;
+    type Output = TokenStream;
 
-    /// Generate `Error::source` only when validated source semantics require
-    /// it.
-    fn expand_with(self, context: Self::Context) -> syn::Result<TokenStream> {
+    fn expand_with(self, context: Self::Context) -> syn::Result<Self::Output> {
         let Self { fields, source } = self;
+
         let root = context.root();
         let inline = context.inline();
-        let (source, transparent) = match source {
-            ErrorSource::None => return Ok(TokenStream::new()),
-            ErrorSource::Field(source) => (source, false),
-            ErrorSource::Transparent(source) => (source, true),
-        };
-        let bindings = fields.bind(&[source.field()]);
-        let pattern = bindings.pattern();
-        let binding = bindings.ident(source.field()).clone();
-        let source_context = SourceContext::new(binding, root.clone(), transparent);
-        let value = source.expand_with(source_context)?;
 
-        Ok(quote! {
-            #inline
-            fn source(&self) -> Option<&(dyn #root::error::Error + 'static)> {
-                let &Self #pattern = self;
-                #value
-            }
-        })
-    }
-}
-
-/// One enumeration `Error` implementation request.
-pub struct EnumErrorImpl<'target> {
-    /// Enumeration identifier.
-    name: &'target Ident,
-
-    /// Enumeration generic parameters.
-    generics: &'target Generics,
-
-    /// Validated variants used by source generation.
-    variants: &'target [Variant],
-}
-
-impl<'target> EnumErrorImpl<'target> {
-    /// Construct one enumeration error expansion request.
-    pub const fn new(name: &'target Ident, generics: &'target Generics, variants: &'target [Variant]) -> Self {
-        Self { name, generics, variants }
-    }
-}
-
-impl Expand for EnumErrorImpl<'_> {
-    /// Shared generation options used by the enum error implementation.
-    type Context = Context;
-
-    /// Generate the enum `Error` implementation and variant source dispatch.
-    fn expand_with(self, context: Self::Context) -> syn::Result<TokenStream> {
-        let Self { name, generics, variants } = self;
-        let root = context.root();
-        let inline = context.inline();
-        let mut generics = generics.clone();
-
-        bounds::ErrorSelf.contribute(&mut generics, root);
-
-        for variant in variants {
-            let bound_context = BoundContext::new(variant.fields(), root);
-
-            variant.source().contribute(&mut generics, &bound_context);
-        }
-
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-        let has_source = variants.iter().any(|variant| !matches!(variant.source(), ErrorSource::None));
-        let method = if has_source {
-            let arms = variants
-                .iter()
-                .map(|variant| VariantSourceArm { variant }.expand_with(context.clone()))
-                .collect::<syn::Result<Vec<_>>>()?;
-
-            quote! {
-                #inline
-                fn source(&self) -> Option<&(dyn #root::error::Error + 'static)> {
-                    match self {
-                        #(#arms),*
-                    }
+        match source {
+            &ErrorSource::None => Ok(TokenStream::new()),
+            &ErrorSource::Field(ref source) => {
+                let field = source.field();
+                let binding = FieldBinding(fields, field).expand()?;
+                let pattern = binding.pattern();
+                let ident = binding.ident();
+                let value = SourceExpansion::Ordinary {
+                    source,
+                    binding: ident,
+                    root,
                 }
-            }
-        } else {
-            TokenStream::new()
-        };
+                .expand()?;
 
-        Ok(quote! {
-            #[automatically_derived]
-            impl #impl_generics #root::error::Error for #name #ty_generics #where_clause {
-                #method
+                Ok(quote! {
+                    #inline
+                    fn source(&self) -> Option<&(dyn #root::error::Error + 'static)> {
+                        let &Self #pattern = self;
+                        #value
+                    }
+                })
             }
-        })
+            &ErrorSource::Transparent(ref source) => {
+                let field = source.field();
+                let binding = FieldBinding(fields, field).expand()?;
+                let pattern = binding.pattern();
+                let ident = binding.ident();
+                let value = SourceExpansion::Transparent {
+                    source,
+                    binding: ident,
+                    root,
+                }
+                .expand()?;
+
+                Ok(quote! {
+                    #inline
+                    fn source(&self) -> Option<&(dyn #root::error::Error + 'static)> {
+                        let &Self #pattern = self;
+                        #value
+                    }
+                })
+            }
+        }
     }
 }
 
 /// One enumeration source match arm.
+// NOTE(invariant): The borrowed variant is a validated member of the enclosing
+// enumeration.
 struct VariantSourceArm<'target> {
     /// Validated variant represented by this source arm.
     variant: &'target Variant,
 }
 
-impl Expand for VariantSourceArm<'_> {
-    /// Shared generation options used by one source match arm.
-    type Context = Context;
+impl<'target> Expand for VariantSourceArm<'target> {
+    type Context = &'target Context;
+    type Output = TokenStream;
 
-    /// Generate one source match arm with the minimum required field binding.
-    fn expand_with(self, context: Self::Context) -> syn::Result<TokenStream> {
+    fn expand_with(self, context: Self::Context) -> syn::Result<Self::Output> {
         let Self { variant } = self;
+
         let name = variant.name();
         let fields = variant.fields();
         let root = context.root();
-        let (source, transparent) = match variant.source() {
-            ErrorSource::None => {
-                let bindings = fields.bind(&[]);
-                let pattern = bindings.pattern();
 
-                return Ok(quote! { &Self::#name #pattern => None });
+        match variant.source() {
+            &ErrorSource::None => {
+                let pattern = FieldPattern(fields, FieldSelection::Selected(&[])).expand()?;
+
+                Ok(quote! { &Self::#name #pattern => None })
             }
-            ErrorSource::Field(source) => (source, false),
-            ErrorSource::Transparent(source) => (source, true),
-        };
-        let bindings = fields.bind(&[source.field()]);
-        let pattern = bindings.pattern();
-        let binding = bindings.ident(source.field()).clone();
-        let source_context = SourceContext::new(binding, root.clone(), transparent);
-        let value = source.expand_with(source_context)?;
+            &ErrorSource::Field(ref source) => {
+                let field = source.field();
+                let binding = FieldBinding(fields, field).expand()?;
+                let pattern = binding.pattern();
+                let ident = binding.ident();
+                let value = SourceExpansion::Ordinary {
+                    source,
+                    binding: ident,
+                    root,
+                }
+                .expand()?;
 
-        Ok(quote! { &Self::#name #pattern => #value })
+                Ok(quote! { &Self::#name #pattern => #value })
+            }
+            &ErrorSource::Transparent(ref source) => {
+                let field = source.field();
+                let binding = FieldBinding(fields, field).expand()?;
+                let pattern = binding.pattern();
+                let ident = binding.ident();
+                let value = SourceExpansion::Transparent {
+                    source,
+                    binding: ident,
+                    root,
+                }
+                .expand()?;
+
+                Ok(quote! { &Self::#name #pattern => #value })
+            }
+        }
+    }
+}
+
+/// Expansion node for one generated source expression.
+enum SourceExpansion<'target> {
+    /// Expand an ordinary source expression.
+    Ordinary {
+        /// Validated ordinary source semantics.
+        source: &'target Source,
+
+        /// Local field binding established by the enclosing pattern.
+        binding: &'target Ident,
+
+        /// Generated root path used by error trait references.
+        root: &'target TokenStream,
+    },
+
+    /// Expand a transparent source expression.
+    Transparent {
+        /// Validated transparent source semantics.
+        source: &'target TransparentSource,
+
+        /// Local field binding established by the enclosing pattern.
+        binding: &'target Ident,
+
+        /// Generated root path used by error trait references.
+        root: &'target TokenStream,
+    },
+}
+
+impl Expand for SourceExpansion<'_> {
+    type Context = ();
+    type Output = TokenStream;
+
+    fn expand_with(self, (): Self::Context) -> syn::Result<Self::Output> {
+        let tokens = match self {
+            Self::Ordinary { source, binding, root } => match source {
+                &Source::Direct(_) => quote! { Some(#binding) },
+                &Source::Boxed(_) => quote! { Some(&**#binding) },
+                &Source::Optional(_) => quote! {
+                    #binding.as_ref().map(|source| source as &(dyn #root::error::Error + 'static))
+                },
+                &Source::OptionalBoxed(_) => quote! {
+                    #binding.as_ref().map(|source| &**source as &(dyn #root::error::Error + 'static))
+                },
+            },
+            Self::Transparent { source, binding, root } => match source {
+                &TransparentSource::Direct(_) => quote! { #root::error::Error::source(#binding) },
+                &TransparentSource::Boxed(_) => quote! { #root::error::Error::source(&**#binding) },
+            },
+        };
+
+        Ok(tokens)
     }
 }
