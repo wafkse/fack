@@ -2,8 +2,17 @@
 name = "fack-no-std"
 version = "0.0.0"
 edition = "2024"
+description = "no_std integration fixture for fack"
+license = "GPL-3.0"
+repository = "https://github.com/wafkse/fack"
+homepage = "https://github.com/wafkse/fack"
+readme = "../../../README.md"
+keywords = ["error", "derive", "no-std"]
+categories = ["no-std", "rust-patterns"]
+publish = false
 
 [dependencies]
-fack = { path = "../.." }
+fack.workspace = true
 
-[workspace]
+[lints]
+workspace = true

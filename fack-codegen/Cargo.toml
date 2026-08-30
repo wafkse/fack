@@ -2,7 +2,6 @@
 name = "fack-codegen"
 version = "0.2.0"
 edition = "2024"
-authors = ["wafkse"]
 description = "Standalone code generation engine for fack error handling"
 license = "GPL-3.0"
 repository = "https://github.com/wafkse/fack"
@@ -13,6 +12,9 @@ categories = ["development-tools::procedural-macro-helpers", "no-std"]
 readme = "../README.md"
 
 [dependencies]
-proc-macro2 = { version = "1.0" }
-quote = { version = "1.0" }
-syn = { version = "3.0", default-features = false, features = ["parsing", "printing", "derive", "extra-traits", "clone-impls"] }
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[lints]
+workspace = true

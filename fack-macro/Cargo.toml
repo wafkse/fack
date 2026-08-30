@@ -2,7 +2,6 @@
 name = "fack-macro"
 version = "0.2.0"
 edition = "2024"
-authors = ["wafkse"]
 description = "Procedural macro implementation for fack error handling"
 license = "GPL-3.0"
 repository = "https://github.com/wafkse/fack"
@@ -16,5 +15,8 @@ readme = "../README.md"
 proc-macro = true
 
 [dependencies]
-fack-codegen = { version = "0.2.0", path = "../fack-codegen" }
-syn = { version = "3.0", default-features = false, features = ["parsing", "proc-macro", "printing", "derive", "extra-traits", "clone-impls"] }
+fack-codegen.workspace = true
+syn = { workspace = true, features = ["proc-macro"] }
+
+[lints]
+workspace = true

@@ -1,18 +1,6 @@
-//! Core error capability used by the `fack` facade.
+//! Foundational `no_std` APIs for the `fack` workspace.
 //!
-//! This crate owns the blanket [`Error`] trait and no code generation logic.
-//!
-//! [`Error`]: crate::error::Error
+//! The crate currently exposes no shared API. It reserves a dependency boundary
+//! for foundational concepts that may be shared without coupling consumers to
+//! the facade, procedural macro, or code generation crates.
 #![no_std]
-#![forbid(unsafe_code, missing_docs, rustdoc::all, clippy::all, clippy::pedantic)]
-
-extern crate alloc;
-
-pub mod error;
-
-pub mod prelude {
-    //! A module that re-exports the most commonly used types and traits in this
-    //! crate.
-
-    pub use crate::error::Error;
-}
