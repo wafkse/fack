@@ -1,6 +1,6 @@
 [package]
 name = "fack"
-version = "0.2.0"
+version = "0.4.0"
 edition = "2024"
 description = "Declarative error handling library with no_std support and composable code generation"
 license = "GPL-3.0"

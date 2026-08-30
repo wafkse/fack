@@ -3,9 +3,9 @@ resolver = "3"
 members = ["fack-macro", "fack", "fack-codegen", "fack-core", "fack/tests/no_std"]
 
 [workspace.dependencies]
-fack = { version = "0.2.0", path = "fack" }
-fack-codegen = { version = "0.2.0", path = "fack-codegen" }
-fack-macro = { version = "0.2.0", path = "fack-macro" }
+fack = { version = "0.4.0", path = "fack" }
+fack-codegen = { version = "0.4.0", path = "fack-codegen" }
+fack-macro = { version = "0.4.0", path = "fack-macro" }
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "3.0", default-features = false, features = ["parsing", "printing", "derive", "extra-traits", "clone-impls"] }
