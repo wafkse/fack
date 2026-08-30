@@ -29,7 +29,8 @@ pub enum Target {
 
 /// Shared validated identity and generation options for an error type.
 #[derive(Clone, Debug)]
-// NOTE(invariant): All generation options and type identity belong to one validated derive target.
+// NOTE(invariant): All generation options and type identity belong to one
+// validated derive target.
 pub struct Header {
     /// Validated generated inline policy.
     inline: InlinePolicy,
@@ -73,7 +74,8 @@ impl Header {
 
 /// A validated structure error.
 #[derive(Clone, Debug)]
-// NOTE(invariant): Every resolved field in display, source, or conversion state was produced from this structure field set.
+// NOTE(invariant): Every resolved field in display, source, or conversion state
+// was produced from this structure field set.
 pub struct Structure {
     /// Validated type identity and generation options.
     header: Header,
@@ -122,7 +124,8 @@ impl Structure {
 
 /// A validated enumeration error.
 #[derive(Clone, Debug)]
-// NOTE(invariant): Every stored variant is validated under the same enumeration header.
+// NOTE(invariant): Every stored variant is validated under the same enumeration
+// header.
 pub struct Enumeration {
     /// Validated type identity and generation options.
     header: Header,
@@ -150,7 +153,8 @@ impl Enumeration {
 
 /// A validated enumeration variant.
 #[derive(Clone, Debug)]
-// NOTE(invariant): Every resolved field in display, source, or conversion state was produced from this variant field set.
+// NOTE(invariant): Every resolved field in display, source, or conversion state
+// was produced from this variant field set.
 pub struct Variant {
     /// Validated source variant identifier.
     name: Ident,
@@ -256,7 +260,8 @@ pub enum ErrorSource {
 
 /// One validated automatic conversion.
 #[derive(Clone, Debug)]
-// NOTE(invariant): The stored field is the sole validated destination of the automatic conversion.
+// NOTE(invariant): The stored field is the sole validated destination of the
+// automatic conversion.
 pub struct Conversion {
     /// Resolved field used by the conversion.
     field: Field,

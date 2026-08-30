@@ -252,7 +252,8 @@ impl<ValueType> Occurrence<ValueType> {
 
 /// A parsed structure error declaration.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-// NOTE(invariant): Attributes and fields belong to the same parsed structure and have passed syntax classification.
+// NOTE(invariant): Attributes and fields belong to the same parsed structure
+// and have passed syntax classification.
 pub struct Structure {
     /// Parsed container wide generation options.
     config: Config,
@@ -302,7 +303,8 @@ impl Structure {
 
 /// A parsed enumeration error declaration.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-// NOTE(invariant): Global configuration and variants belong to the same parsed enumeration.
+// NOTE(invariant): Global configuration and variants belong to the same parsed
+// enumeration.
 pub struct Enumeration {
     /// Parsed container wide generation options.
     config: Config,
@@ -335,7 +337,8 @@ impl Enumeration {
 
 /// A parsed error enumeration variant.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-// NOTE(invariant): The fields and declaration belong to the same parsed variant after syntax classification.
+// NOTE(invariant): The fields and declaration belong to the same parsed variant
+// after syntax classification.
 pub struct Variant {
     /// Source variant identifier.
     name: syn::Ident,

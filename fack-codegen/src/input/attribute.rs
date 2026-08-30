@@ -17,7 +17,8 @@ use super::{diagnostic::Errors, field::FieldRef, format::Format};
 
 /// A parsed `#[error(...)]` parameter.
 #[derive(Clone, Debug)]
-// NOTE(invariant): The span, optional identifier, and parameter kind are parsed from the same helper attribute parameter.
+// NOTE(invariant): The span, optional identifier, and parameter kind are parsed
+// from the same helper attribute parameter.
 pub struct Param {
     /// Source span that introduced the parameter.
     span: Span,
@@ -155,7 +156,8 @@ impl Parse for Param {
 
 /// Parsed container wide generation options.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
-// NOTE(invariant): Inline and import policies are each singular after duplicate classification.
+// NOTE(invariant): Inline and import policies are each singular after duplicate
+// classification.
 pub struct Config {
     /// Requested generated inline policy.
     inline: InlinePolicy,
@@ -246,7 +248,8 @@ impl Declaration {
 
 /// One ordinary error declaration after syntax classification.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-// NOTE(invariant): Display and source states are syntactically coherent before this value is constructed.
+// NOTE(invariant): Display and source states are syntactically coherent before
+// this value is constructed.
 pub struct Ordinary {
     /// Selected ordinary display behavior.
     display: Display,

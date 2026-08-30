@@ -6,7 +6,8 @@
 
 /// A list of `syn` diagnostics accumulated before returning to the caller.
 #[derive(Debug, Clone, Default)]
-// NOTE(invariant): The optional error contains the combination of every diagnostic accumulated so far.
+// NOTE(invariant): The optional error contains the combination of every
+// diagnostic accumulated so far.
 pub struct Errors(Option<syn::Error>);
 
 impl Errors {

@@ -1,8 +1,8 @@
 //! Expansion of validated semantics into Rust trait implementations.
 //!
 //! This subsystem owns final token generation only. Every expansion node uses
-//! one private `Expand` contract with an explicit context and output type. Small
-//! request values distinguish operations without exposing sibling APIs.
+//! one private `Expand` contract with an explicit context and output type.
+//! Small request values distinguish operations without exposing sibling APIs.
 
 use alloc::vec::Vec;
 

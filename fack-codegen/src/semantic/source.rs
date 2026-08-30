@@ -10,7 +10,8 @@ use crate::input::Field;
 
 /// One resolved source field and its semantic error type.
 #[derive(Clone, Debug)]
-// NOTE(invariant): The resolved field and semantic error type describe the same source after supported container removal.
+// NOTE(invariant): The resolved field and semantic error type describe the same
+// source after supported container removal.
 pub struct ErrorField {
     /// Resolved source field proof.
     field: Field,

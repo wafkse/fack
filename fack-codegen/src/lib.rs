@@ -12,7 +12,8 @@ mod semantic;
 
 /// A syntactically coherent error derive target before semantic validation.
 #[derive(Clone, Debug)]
-// NOTE(invariant): Construction succeeds only after syntax parsing and declaration classification complete.
+// NOTE(invariant): Construction succeeds only after syntax parsing and
+// declaration classification complete.
 pub struct Target(input::Target);
 
 impl Target {
@@ -30,7 +31,8 @@ impl Target {
     ///
     /// # Errors
     ///
-    /// Returns a diagnostic when a field dependent requirement is not satisfied.
+    /// Returns a diagnostic when a field dependent requirement is not
+    /// satisfied.
     #[inline]
     pub fn validate(self) -> syn::Result<ValidatedTarget> {
         let Self(target) = self;
@@ -41,7 +43,8 @@ impl Target {
 
 /// A semantically validated error derive target ready for expansion.
 #[derive(Clone, Debug)]
-// NOTE(invariant): Construction succeeds only after every field dependent requirement resolves into semantic state.
+// NOTE(invariant): Construction succeeds only after every field dependent
+// requirement resolves into semantic state.
 pub struct ValidatedTarget(semantic::Target);
 
 impl ValidatedTarget {

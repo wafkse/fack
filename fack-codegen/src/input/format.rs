@@ -14,7 +14,8 @@ use syn::{
 
 /// A source-level Rust format string and explicit arguments.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// NOTE(invariant): The literal and explicit arguments preserve one parsed format declaration without semantic rewriting.
+// NOTE(invariant): The literal and explicit arguments preserve one parsed
+// format declaration without semantic rewriting.
 pub struct Format {
     /// Source format string literal.
     literal: LitStr,
@@ -42,7 +43,8 @@ impl Parse for Format {
 
 /// One explicit Rust format argument.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// NOTE(invariant): The optional name and expression represent one parsed positional or named format argument.
+// NOTE(invariant): The optional name and expression represent one parsed
+// positional or named format argument.
 pub struct Argument {
     /// Optional explicit named-argument identifier.
     name: Option<Ident>,

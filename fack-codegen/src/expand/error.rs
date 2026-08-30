@@ -98,8 +98,8 @@ enum ErrorBoundSubject<'target> {
 }
 
 /// Expansion node for error generic requirements.
-// NOTE(invariant): Every source subject has completed semantic validation before
-// bound generation starts.
+// NOTE(invariant): Every source subject has completed semantic validation
+// before bound generation starts.
 struct ErrorBoundExpansion<'target> {
     /// Validated source state receiving generated bounds.
     subject: ErrorBoundSubject<'target>,

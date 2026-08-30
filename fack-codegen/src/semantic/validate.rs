@@ -78,7 +78,8 @@ impl InputVariant {
 }
 
 /// Field dependent validation for one coherent parsed declaration.
-// NOTE(invariant): The declaration is validated only against the borrowed field collection.
+// NOTE(invariant): The declaration is validated only against the borrowed field
+// collection.
 struct Declaration<'fields> {
     /// Fields against which selectors and captures are resolved.
     fields: &'fields Fields,
