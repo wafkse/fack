@@ -18,20 +18,20 @@ struct FileError {
 
 ```toml
 [dependencies]
-fack = "0.2.0"
+fack = "0.4.0"
 ```
 
-## Design
+Import the prelude to bring both the derive macro and `core::error::Error` into scope.
 
-- All derive behavior uses the single `#[error(...)]` helper namespace
-- Generated implementations use `::core` unless an import root is selected
-- Format fields and source fields are resolved before expansion
-- `fack-codegen` exposes opaque parse, validate, and expansion stages for downstream tooling
-- Generated `Display`, `Error`, and `From` implementations allocate nothing
+```rust,no_run
+use fack::prelude::*;
+```
 
 ## Formatting
 
-Named and tuple fields can be captured directly. Explicit Rust format arguments are also supported.
+Use a format string to implement `Display`.
+
+Named fields can be captured directly.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -41,10 +41,22 @@ use fack::prelude::*;
 struct InputError {
     input: String,
 }
+```
+
+Tuple fields use positional captures.
+
+```rust,no_run
+use fack::prelude::*;
 
 #[derive(Error, Debug)]
 #[error("invalid value {0}")]
 struct ValueError(i32);
+```
+
+Explicit Rust expressions are accepted as format arguments.
+
+```rust,no_run
+use fack::prelude::*;
 
 #[derive(Error, Debug)]
 #[error("normalized {value}", value = input.trim())]
@@ -53,7 +65,34 @@ struct NormalizedError {
 }
 ```
 
-A custom formatter can be selected when a format string is not the right abstraction.
+Positional expressions are also supported.
+
+```rust,no_run
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+#[error("absolute value {}", value.abs())]
+struct AbsoluteError {
+    value: i32,
+}
+```
+
+Dynamic width and precision may reference fields through normal Rust format syntax.
+
+```rust,no_run
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+#[error("value {value:>width$}")]
+struct PaddedError {
+    value: u32,
+    width: usize,
+}
+```
+
+## Custom display
+
+Use `display(path)` when formatting belongs in a formatter function.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -70,15 +109,15 @@ struct RenderedError {
 }
 ```
 
-## Sources
+## Error sources
 
-`#[error(source(field))]` exposes the selected field as the ordinary source. Direct, boxed, optional, and optional boxed sources are supported.
+Use `source(field)` to expose an ordinary error source.
 
 ```rust,no_run
 use fack::prelude::*;
 
 #[derive(Error, Debug)]
-#[error("request failed")]
+#[error("request failed for {url}")]
 #[error(source(io))]
 struct RequestError {
     io: std::io::Error,
@@ -86,19 +125,50 @@ struct RequestError {
 }
 ```
 
-`#[error(transparent(field))]` requires exactly one non-optional field. Display forwards to that field and source chaining forwards through its own `Error::source` implementation.
+Direct, boxed, optional, and optional boxed sources are supported.
 
 ```rust,no_run
 use fack::prelude::*;
 
 #[derive(Error, Debug)]
-#[error(transparent(0))]
-struct Wrapper(std::io::Error);
+#[error("optional failure")]
+#[error(source(source))]
+struct OptionalError {
+    source: Option<Box<std::io::Error>>,
+}
 ```
 
-## Conversion
+## Transparent errors
 
-`#[error(from)]` requires exactly one field. It generates `From<T>` and makes that field the ordinary error source.
+Use `transparent(field)` to forward `Display` and source chaining through one non-optional error field.
+
+Additional fields may retain context.
+
+```rust,no_run
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+#[error(transparent(inner))]
+struct Wrapper {
+    context: u8,
+    inner: std::io::Error,
+}
+```
+
+## Conversion with `From`
+
+Use `from` on a declaration with exactly one field. It generates `From<T>` and uses that field as the ordinary source.
+
+```rust,no_run
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+#[error("parse failed")]
+#[error(from)]
+struct ParseError(std::num::ParseIntError);
+```
+
+The same form works on enum variants.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -115,9 +185,38 @@ enum AppError {
 }
 ```
 
+## Enum errors
+
+Each variant declares its own display, source, transparency, or conversion behavior.
+
+```rust,no_run
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+enum LoadError {
+    #[error("missing file {0}")]
+    Missing(String),
+
+    #[error("failed to read {path}")]
+    #[error(source(source))]
+    Read {
+        path: String,
+        source: std::io::Error,
+    },
+
+    #[error(transparent(source))]
+    Io {
+        source: std::io::Error,
+        attempts: u8,
+    },
+}
+```
+
 ## Generation options
 
-Without an inline declaration, generated methods receive no explicit inline attribute. `#[error(inline)]` and `#[error(inline(neutral))]` emit ordinary `#[inline]`. The `always` and `never` strategies emit their corresponding Rust attributes.
+Without an inline declaration, generated methods receive no explicit inline attribute.
+
+`#[error(inline)]` and `#[error(inline(neutral))]` emit ordinary `#[inline]`. The `always` and `never` strategies emit the corresponding Rust attributes.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -128,7 +227,7 @@ use fack::prelude::*;
 struct RareError;
 ```
 
-Generated paths use `::core` by default. `#[error(import(path))]` selects a different root.
+Generated paths use `::core` by default. Use `import(path)` to select another root.
 
 ```rust,no_run
 use fack::prelude::*;
@@ -139,26 +238,45 @@ use fack::prelude::*;
 struct StdError;
 ```
 
-Enum-wide generation options belong on the enum. Display, source, transparency, and conversion declarations belong on variants.
+Enum-wide generation options belong on the enum.
 
-## Code generation engine
+```rust,no_run
+use fack::prelude::*;
 
-`fack-codegen` is a regular `no_std` library rather than a proc-macro crate. Its supported API keeps compiler representations opaque while allowing downstream tools to choose staged or one-shot generation.
+#[derive(Error, Debug)]
+#[error(inline)]
+#[error(import(::std))]
+enum ConfiguredError {
+    #[error("first error")]
+    First,
 
-```rust,ignore
-let target = fack_codegen::Target::input(&input)?;
-let validated = target.validate()?;
-let tokens = validated.expand()?;
-
-let tokens = fack_codegen::generate(&input)?;
+    #[error("second error")]
+    Second,
+}
 ```
 
-## Workspace
+## `no_std`
+
+Generated implementations use `core` by default, so the facade can be used from `no_std` crates without switching import roots.
+
+```rust,ignore
+#![no_std]
+
+use fack::prelude::*;
+
+#[derive(Error, Debug)]
+#[error("device error {code}")]
+struct DeviceError {
+    code: u8,
+}
+```
+
+## Associated crates
 
 - `fack` provides the user-facing facade
-- `fack-core` provides the blanket error capability
-- `fack-macro` provides the derive macro entry point
-- `fack-codegen` provides the staged generation engine
+- `fack-core` reserves the foundational `no_std` API boundary
+- `fack-macro` provides the derive macro
+- `fack-codegen` provides the standalone Syn 3 code generation API
 
 ## License
 
