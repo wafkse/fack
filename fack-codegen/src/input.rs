@@ -10,7 +10,7 @@ mod field;
 mod format;
 mod target;
 
-pub use attribute::{Declaration, Display, ImportRoot, InlinePolicy, Source};
+pub use attribute::{Declaration, Display, ImportRoot, InlinePolicy, Source, Transparent};
 pub use field::{Field, FieldRef, Fields};
 pub use format::{Argument, Format};
 pub use target::{Enumeration, Structure, Target, Variant};

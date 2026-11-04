@@ -66,12 +66,24 @@
 //! }
 //! ```
 //!
-//! `#[error(transparent(field))]` selects one non-optional error field. Extra
-//! fields may retain context. Display forwards to the selected field and source
-//! chaining forwards through that field's own `Error::source` implementation.
+//! A transparent error declaration uses one field for the wrapper's formatting
+//! and source behavior.
+//!
+//! - `#[error(transparent)]` selects the first declared field. For tuple
+//!   structs and tuple variants, this is field `0`.
+//! - `#[error(transparent(field))]` selects a field by name or tuple index.
+//!
+//! The selected field must be a non-optional error. The wrapper's `Display`
+//! implementation delegates formatting to that field. Its `Error::source`
+//! method calls the field's `Error::source` method. Other fields may store
+//! context.
 //!
 //! ```rust
 //! # use fack::prelude::*;
+//! #[derive(Error, Debug)]
+//! #[error(transparent)]
+//! struct TupleWrapper(std::io::Error);
+//!
 //! #[derive(Error, Debug)]
 //! #[error(transparent(inner))]
 //! struct Wrapper {

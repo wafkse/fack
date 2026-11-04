@@ -9,8 +9,8 @@ use alloc::{boxed::Box, vec::Vec};
 use syn::spanned::Spanned;
 
 use crate::input::{
-    Declaration as InputDeclaration, Display as InputDisplay, Enumeration as InputEnumeration, FieldRef, Fields, Source as InputSource,
-    Structure as InputStructure, Target as InputTarget, Variant as InputVariant,
+    Declaration as InputDeclaration, Display as InputDisplay, Enumeration as InputEnumeration, Fields, Source as InputSource,
+    Structure as InputStructure, Target as InputTarget, Transparent, Variant as InputVariant,
 };
 
 use super::{
@@ -100,7 +100,7 @@ impl<'fields> Declaration<'fields> {
         let Self { fields, input } = self;
 
         match input {
-            InputDeclaration::Transparent(field) => Self::transparent(fields, field),
+            InputDeclaration::Transparent(transparent) => Self::transparent(fields, transparent),
             InputDeclaration::Ordinary(ordinary) => {
                 let (display, source) = ordinary.parts();
 
@@ -158,9 +158,24 @@ impl<'fields> Declaration<'fields> {
     }
 
     /// Resolve transparent display and source behavior.
-    fn transparent(fields: &Fields, field: FieldRef) -> syn::Result<(Display, ErrorSource, Option<Conversion>)> {
-        let span = field.span();
-        let field = fields.resolve(field)?;
+    fn transparent(fields: &Fields, transparent: Transparent) -> syn::Result<(Display, ErrorSource, Option<Conversion>)> {
+        let (span, field) = match transparent {
+            Transparent::First(ident) => {
+                let span = ident.span();
+                let field = fields
+                    .resolved()
+                    .next()
+                    .ok_or_else(|| syn::Error::new(span, "transparent error requires at least one field"))?;
+
+                (span, field)
+            }
+            Transparent::Selected(field) => {
+                let span = field.span();
+                let field = fields.resolve(field)?;
+
+                (span, field)
+            }
+        };
         let source = ResolvedSource::new(field.clone());
 
         source.into_transparent().map_or_else(

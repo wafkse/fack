@@ -13,7 +13,7 @@ use syn::{
     token::Paren,
 };
 
-use super::{diagnostic::Errors, field::FieldRef, format::Format};
+use super::{FieldRef, diagnostic::Errors, format::Format};
 
 /// A parsed `#[error(...)]` parameter.
 #[derive(Clone, Debug)]
@@ -130,9 +130,20 @@ impl Parse for Param {
                         Ok(ParamKind::Source(content.parse()?))
                     }
                     "transparent" => {
-                        let content;
-                        syn::parenthesized!(content in input);
-                        Ok(ParamKind::Transparent(Transparent(content.parse()?)))
+                        let transparent = if input.peek(Paren) {
+                            let content;
+                            syn::parenthesized!(content in input);
+
+                            if content.is_empty() {
+                                Transparent::First(ident.clone())
+                            } else {
+                                Transparent::Selected(content.parse()?)
+                            }
+                        } else {
+                            Transparent::First(ident.clone())
+                        };
+
+                        Ok(ParamKind::Transparent(transparent))
                     }
                     "from" => Ok(ParamKind::From(ident.clone())),
                     "display" => {
@@ -196,8 +207,8 @@ pub enum Declaration {
     /// Ordinary display with optional source and conversion behavior.
     Ordinary(Ordinary),
 
-    /// Transparent behavior through one selected field.
-    Transparent(FieldRef),
+    /// Transparent behavior through the first or one selected field.
+    Transparent(Transparent),
 }
 
 impl Declaration {
@@ -211,10 +222,8 @@ impl Declaration {
         transparent: Option<(proc_macro2::Span, Transparent)>,
         from: Option<(proc_macro2::Span, Ident)>,
     ) -> syn::Result<Self> {
-        let transparent = transparent.map(|(span, Transparent(field))| (span, field));
-
         match (transparent, format, display, source, from) {
-            (Some((_, field)), None, None, None, None) => Ok(Self::Transparent(field)),
+            (Some((_, transparent)), None, None, None, None) => Ok(Self::Transparent(transparent)),
             (Some(_), Some((span, _)), _, _, _) | (Some(_), _, Some((span, _)), _, _) => {
                 Err(syn::Error::new(span, "transparent error cannot also declare display formatting"))
             }
@@ -228,7 +237,7 @@ impl Declaration {
             )),
             (None, None, None, _, _) => Err(syn::Error::new_spanned(
                 subject,
-                "error requires a format string, `display(...)`, or `transparent(...)`",
+                "error requires a format string, `display(...)`, or `transparent`",
             )),
             (None, Some((_, format)), None, source, from) => {
                 let display = Display::Format(format);
@@ -330,7 +339,7 @@ pub enum ParamKind {
     /// An explicit source field.
     Source(FieldRef),
 
-    /// Transparent error behavior over one field.
+    /// Transparent error behavior over the first or a selected field.
     Transparent(Transparent),
 
     /// Automatic conversion from the sole field.
@@ -395,14 +404,12 @@ pub enum ImportRoot {
     Explicit(Path),
 }
 
-/// Transparent behavior over a referenced field.
+/// Transparent behavior over the first field or a selected field.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Transparent(pub FieldRef);
+pub enum Transparent {
+    /// Use the first declared field, tracking the attribute for diagnostics.
+    First(Ident),
 
-impl Parse for Transparent {
-    /// Parse the field selector used for transparent behavior.
-    #[inline]
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        input.parse().map(Self)
-    }
+    /// Use an explicitly selected field.
+    Selected(FieldRef),
 }
