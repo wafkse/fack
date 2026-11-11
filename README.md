@@ -18,7 +18,7 @@ struct FileError {
 
 ```toml
 [dependencies]
-fack = "0.4.0"
+fack = "0.5.0"
 ```
 
 Import the prelude to bring both the derive macro and `core::error::Error` into scope.
